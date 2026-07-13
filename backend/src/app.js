@@ -1,11 +1,43 @@
 const express = require('express');
+const helmet = require('helmet');
+const cors = require('cors');
+const cookieParser = require('cookie-parser');
+const env = require('./config/env');
+const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
 
-// Scaffolding placeholder — security middleware, routes, and DB/Redis
-// wiring are added in later phases.
-app.get('/', (req, res) => {
-  res.send('KitGrid API — scaffolding');
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'"],
+        imgSrc: ["'self'", 'data:'],
+        objectSrc: ["'none'"],
+        baseUri: ["'self'"],
+        frameAncestors: ["'self'"],
+      },
+    },
+  })
+);
+
+app.use(
+  cors({
+    origin: env.frontendOrigin,
+    credentials: true,
+  })
+);
+
+app.use(express.json({ limit: '100kb' }));
+app.use(cookieParser());
+
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok' });
 });
+
+// Must be registered last — Express recognizes error middleware by its 4-argument signature.
+app.use(errorHandler);
 
 module.exports = app;
