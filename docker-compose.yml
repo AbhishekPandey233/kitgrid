@@ -1,0 +1,58 @@
+services:
+  mongo:
+    image: mongo:7
+    container_name: kitgrid-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - kitgrid-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: kitgrid-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - kitgrid-net
+
+  backend:
+    build: ./backend
+    container_name: kitgrid-backend
+    restart: unless-stopped
+    env_file: ./backend/.env
+    ports:
+      - "5000:5000"
+    depends_on:
+      - mongo
+      - redis
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    networks:
+      - kitgrid-net
+
+  frontend:
+    build: ./frontend
+    container_name: kitgrid-frontend
+    restart: unless-stopped
+    env_file: ./frontend/.env
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - kitgrid-net
+
+volumes:
+  mongo_data:
+
+networks:
+  kitgrid-net:
+    driver: bridge
