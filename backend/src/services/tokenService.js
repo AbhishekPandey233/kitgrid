@@ -8,6 +8,7 @@ const ACCESS_TOKEN_TTL_MS = 15 * 24 * 60 * 60 * 1000;
 const REFRESH_TOKEN_TTL = '30d';
 const REFRESH_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60;
 const REFRESH_TOKEN_TTL_MS = REFRESH_TOKEN_TTL_SECONDS * 1000;
+const MFA_PENDING_TOKEN_TTL = '5m';
 
 // Why a 15-day access token needs the refresh-side machinery below:
 //
@@ -37,7 +38,7 @@ function sessionKey(userId, sessionId) {
 }
 
 function signAccessToken(user) {
-  return jwt.sign({ sub: user._id.toString(), role: user.role }, env.jwtSecret, {
+  return jwt.sign({ sub: user._id.toString(), role: user.role, purpose: 'access' }, env.jwtSecret, {
     expiresIn: ACCESS_TOKEN_TTL,
   });
 }
@@ -48,12 +49,36 @@ function signRefreshToken({ userId, sessionId, jti }) {
   });
 }
 
+// Access and mfa_pending tokens are both signed with env.jwtSecret, so the `purpose`
+// claim is what stops one from being replayed as the other — a pending token only proves
+// "password was correct", not that MFA was completed, and must never pass as a session.
 function verifyAccessToken(token) {
-  return jwt.verify(token, env.jwtSecret);
+  const payload = jwt.verify(token, env.jwtSecret);
+  if (payload.purpose !== 'access') {
+    throw new Error('Invalid token purpose');
+  }
+  return payload;
 }
 
 function verifyRefreshToken(token) {
   return jwt.verify(token, env.jwtRefreshSecret);
+}
+
+// Short-lived intermediate token issued when a password check succeeds but MFA is still
+// required — deliberately not a session (no cookies, no Redis-tracked session). Carries a
+// `purpose` claim so it can't be mistaken for (or substituted by) a real access token.
+function signMfaPendingToken(user) {
+  return jwt.sign({ sub: user._id.toString(), purpose: 'mfa_pending' }, env.jwtSecret, {
+    expiresIn: MFA_PENDING_TOKEN_TTL,
+  });
+}
+
+function verifyMfaPendingToken(token) {
+  const payload = jwt.verify(token, env.jwtSecret);
+  if (payload.purpose !== 'mfa_pending') {
+    throw new Error('Invalid token purpose');
+  }
+  return payload;
 }
 
 // Login: starts a new session ("family") and whitelists its first refresh token jti.
@@ -126,6 +151,8 @@ module.exports = {
   signAccessToken,
   verifyAccessToken,
   verifyRefreshToken,
+  signMfaPendingToken,
+  verifyMfaPendingToken,
   issueSession,
   rotateSession,
   revokeSession,
