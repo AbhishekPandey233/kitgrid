@@ -5,6 +5,7 @@ const cookieParser = require('cookie-parser');
 const env = require('./config/env');
 const errorHandler = require('./middleware/errorHandler');
 const { globalLimiter } = require('./middleware/rateLimit');
+const { passport } = require('./services/oauthService');
 
 const app = express();
 
@@ -34,6 +35,7 @@ app.use(
 app.use(express.json({ limit: '100kb' }));
 app.use(cookieParser());
 app.use(globalLimiter);
+app.use(passport.initialize());
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
