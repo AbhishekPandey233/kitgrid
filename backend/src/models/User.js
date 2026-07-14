@@ -30,6 +30,9 @@ const userSchema = new Schema(
     oauthProviders: { type: [oauthProviderSchema], default: [] },
     failedLoginAttempts: { type: Number, default: 0 },
     lockoutUntil: { type: Date },
+    // Number of times this account has been locked out consecutively (reset to 0 on a
+    // successful login) — drives exponential backoff on the lockout duration.
+    lockoutCount: { type: Number, default: 0 },
     status: { type: String, enum: ['active', 'suspended'], default: 'active' },
     lastLogin: { type: Date },
   },
