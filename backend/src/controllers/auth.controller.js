@@ -1,7 +1,27 @@
+const QRCode = require('qrcode');
 const User = require('../models/User');
 const passwordPolicy = require('../services/passwordPolicy');
 const tokenService = require('../services/tokenService');
+const mfaService = require('../services/mfaService');
+const rateLimitHelpers = require('../middleware/rateLimit');
 const logger = require('../utils/logger');
+
+const FAILED_ATTEMPTS_LOCKOUT_THRESHOLD = 12;
+const BASE_LOCKOUT_MS = 15 * 60 * 1000;
+const MAX_LOCKOUT_MS = 24 * 60 * 60 * 1000; // cap runaway exponential growth at 24h
+
+function computeLockoutDurationMs(priorLockoutCount) {
+  return Math.min(BASE_LOCKOUT_MS * 2 ** priorLockoutCount, MAX_LOCKOUT_MS);
+}
+
+// Generic failure for login: same status/message whether the account doesn't exist, has
+// no password (OAuth-only), is currently locked out, or the password is simply wrong —
+// none of those should be distinguishable to the caller. Also feeds IP-level tracking,
+// which is independent of whether the target account exists at all.
+async function failLogin(res, ip) {
+  await rateLimitHelpers.recordFailedLoginFromIp(ip);
+  return res.status(401).json({ error: 'Invalid email or password' });
+}
 
 function setAuthCookies(res, { accessToken, refreshToken }) {
   res.cookie('access_token', accessToken, tokenService.accessCookieOptions);
@@ -81,32 +101,167 @@ async function login(req, res, next) {
       return res.status(400).json({ error: 'email and password are required' });
     }
 
+    const ip = req.ip;
+
+    // Fail fast on an already-blocked IP without touching Mongo or the password hash.
+    if (await rateLimitHelpers.isIpBlocked(ip)) {
+      return res.status(429).json({ error: 'Too many attempts, please try again later' });
+    }
+
     const normalizedEmail = String(email).trim().toLowerCase();
     const user = await User.findOne({ email: normalizedEmail }).select('+passwordHash');
 
-    // Same generic error for "no such user", "OAuth-only account with no password", and
-    // "wrong password" — none of these should let a caller distinguish a valid email from
-    // an invalid one.
-    if (!user || !user.passwordHash) {
-      return res.status(401).json({ error: 'Invalid email or password' });
+    if (!user) {
+      return await failLogin(res, ip);
+    }
+
+    // Locked accounts are rejected before ever comparing the password — same generic
+    // response as "wrong password", so a caller can't tell lockout apart from a bad guess.
+    if (user.lockoutUntil && user.lockoutUntil > new Date()) {
+      return await failLogin(res, ip);
+    }
+
+    if (!user.passwordHash) {
+      return await failLogin(res, ip);
     }
 
     const passwordMatches = await passwordPolicy.comparePassword(password, user.passwordHash);
     if (!passwordMatches) {
-      return res.status(401).json({ error: 'Invalid email or password' });
+      user.failedLoginAttempts += 1;
+
+      if (user.failedLoginAttempts >= FAILED_ATTEMPTS_LOCKOUT_THRESHOLD) {
+        const durationMs = computeLockoutDurationMs(user.lockoutCount);
+        user.lockoutUntil = new Date(Date.now() + durationMs);
+        user.lockoutCount += 1;
+        user.failedLoginAttempts = 0;
+        logger.warn('Account locked after repeated failed logins', {
+          userId: user._id.toString(),
+          lockoutCount: user.lockoutCount,
+          durationMs,
+        });
+      }
+
+      await user.save();
+      return await failLogin(res, ip);
     }
 
     if (user.status === 'suspended') {
       return res.status(403).json({ error: 'Account is suspended' });
     }
 
+    // Password verified — clear brute-force state regardless of whether MFA is required next.
+    user.failedLoginAttempts = 0;
+    user.lockoutCount = 0;
+    user.lockoutUntil = undefined;
+
+    if (user.mfaEnabled) {
+      await user.save();
+      const mfaPendingToken = tokenService.signMfaPendingToken(user);
+      logger.info('Password verified, awaiting MFA challenge', { userId: user._id.toString() });
+      // No cookies yet — this token only proves "password was correct", not a session.
+      return res.status(200).json({ mfaRequired: true, mfaPendingToken });
+    }
+
+    user.lastLogin = new Date();
+
     const { accessToken, refreshToken } = await tokenService.issueSession(user);
     setAuthCookies(res, { accessToken, refreshToken });
 
-    user.lastLogin = new Date();
     await user.save();
 
     logger.info('User logged in', { userId: user._id.toString() });
+
+    return res.status(200).json({
+      user: { id: user._id, name: user.name, email: user.email, role: user.role },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function mfaSetup(req, res, next) {
+  try {
+    const user = req.user;
+    const secret = mfaService.generateSecret();
+    const otpauthUrl = mfaService.buildOtpAuthUrl(secret, user.email);
+    const qrCode = await QRCode.toDataURL(otpauthUrl);
+
+    // Stored but inert until verify-setup confirms the user actually has a working
+    // authenticator — mfaEnabled stays false, so login isn't affected mid-enrollment.
+    user.mfaSecretEncrypted = mfaService.encryptSecret(secret);
+    user.mfaEnabled = false;
+    await user.save();
+
+    logger.info('MFA setup initiated', { userId: user._id.toString() });
+
+    // `secret` is shown once, in plaintext, for manual entry as a QR-scan fallback — same
+    // as every standard TOTP setup flow. It's never returned again after this response.
+    return res.status(200).json({ qrCode, secret, otpauthUrl });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function mfaVerifySetup(req, res, next) {
+  try {
+    const { token } = req.body || {};
+    if (!token) {
+      return res.status(400).json({ error: 'token is required' });
+    }
+
+    const user = await User.findById(req.user._id).select('+mfaSecretEncrypted');
+    if (!user.mfaSecretEncrypted) {
+      return res.status(400).json({ error: 'MFA setup has not been started' });
+    }
+
+    const secret = mfaService.decryptSecret(user.mfaSecretEncrypted);
+    if (!mfaService.verifyToken(token, secret)) {
+      return res.status(400).json({ error: 'Invalid code' });
+    }
+
+    user.mfaEnabled = true;
+    await user.save();
+
+    logger.info('MFA enabled', { userId: user._id.toString() });
+
+    return res.status(200).json({ message: 'MFA enabled' });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function mfaChallenge(req, res, next) {
+  try {
+    const { mfaPendingToken, token } = req.body || {};
+    if (!mfaPendingToken || !token) {
+      return res.status(400).json({ error: 'mfaPendingToken and token are required' });
+    }
+
+    let payload;
+    try {
+      payload = tokenService.verifyMfaPendingToken(mfaPendingToken);
+    } catch (err) {
+      return res.status(401).json({ error: 'Invalid or expired MFA challenge' });
+    }
+
+    const user = await User.findById(payload.sub).select('+mfaSecretEncrypted');
+    if (!user || user.status === 'suspended' || !user.mfaEnabled || !user.mfaSecretEncrypted) {
+      return res.status(401).json({ error: 'Invalid or expired MFA challenge' });
+    }
+
+    const secret = mfaService.decryptSecret(user.mfaSecretEncrypted);
+    if (!mfaService.verifyToken(token, secret)) {
+      return res.status(401).json({ error: 'Invalid code' });
+    }
+
+    user.lastLogin = new Date();
+
+    const { accessToken, refreshToken } = await tokenService.issueSession(user);
+    setAuthCookies(res, { accessToken, refreshToken });
+
+    await user.save();
+
+    logger.info('MFA challenge succeeded', { userId: user._id.toString() });
 
     return res.status(200).json({
       user: { id: user._id, name: user.name, email: user.email, role: user.role },
@@ -175,4 +330,12 @@ async function logout(req, res, next) {
   }
 }
 
-module.exports = { register, login, refresh, logout };
+module.exports = {
+  register,
+  login,
+  refresh,
+  logout,
+  mfaSetup,
+  mfaVerifySetup,
+  mfaChallenge,
+};
