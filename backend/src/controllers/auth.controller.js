@@ -1,4 +1,5 @@
 const QRCode = require('qrcode');
+const env = require('../config/env');
 const User = require('../models/User');
 const passwordPolicy = require('../services/passwordPolicy');
 const tokenService = require('../services/tokenService');
@@ -271,6 +272,111 @@ async function mfaChallenge(req, res, next) {
   }
 }
 
+function googleProfileEmail(profile) {
+  return profile.emails?.[0]?.value?.toLowerCase() || null;
+}
+
+// GET /api/auth/google/callback — plain "log in with Google".
+async function googleLoginCallback(req, res, next) {
+  try {
+    const profile = req.user;
+    const googleId = profile.id;
+    const email = googleProfileEmail(profile);
+
+    if (!email) {
+      return res.redirect(`${env.frontendOrigin}/login?oauth=error`);
+    }
+
+    let user = await User.findOne({
+      'oauthProviders.provider': 'google',
+      'oauthProviders.providerId': googleId,
+    });
+
+    if (!user) {
+      // No OAuth-linked account yet — but if a local (password) account already exists
+      // with this email, do NOT auto-link. We have no email-verification flow, so trusting
+      // "same email = same person" here would let anyone who merely knows a victim's email
+      // take over their account via Google sign-in. Direct them to log in with their
+      // password first and link Google from an authenticated "Connect Google" action instead.
+      const existingLocal = await User.findOne({ email });
+      if (existingLocal) {
+        return res.redirect(`${env.frontendOrigin}/login?oauth=email_exists`);
+      }
+
+      user = await User.create({
+        name: profile.displayName || email,
+        email,
+        oauthProviders: [{ provider: 'google', providerId: googleId }],
+      });
+      logger.info('User registered via Google OAuth', { userId: user._id.toString() });
+    }
+
+    if (user.status === 'suspended') {
+      return res.redirect(`${env.frontendOrigin}/login?oauth=suspended`);
+    }
+
+    user.lastLogin = new Date();
+    const { accessToken, refreshToken } = await tokenService.issueSession(user);
+    setAuthCookies(res, { accessToken, refreshToken });
+    await user.save();
+
+    logger.info('User logged in via Google OAuth', { userId: user._id.toString() });
+
+    return res.redirect(`${env.frontendOrigin}/oauth/callback?status=success`);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// GET /api/auth/google/link/callback — "Connect Google" from an already-logged-in user's
+// profile settings. The initiating route (/google/link) requires auth before it will even
+// redirect to Google; this callback independently re-verifies the access_token cookie
+// (which survives the redirect round-trip, since it's a same-site navigation) rather than
+// trusting anything client-supplied about which account to attach the Google identity to.
+async function googleLinkCallback(req, res, next) {
+  try {
+    const accessTokenCookie = req.cookies?.access_token;
+    let payload;
+    try {
+      payload = accessTokenCookie ? tokenService.verifyAccessToken(accessTokenCookie) : null;
+    } catch (err) {
+      payload = null;
+    }
+    if (!payload) {
+      return res.redirect(`${env.frontendOrigin}/profile?oauth=link_requires_login`);
+    }
+
+    const profile = req.user;
+    const googleId = profile.id;
+
+    const linkedElsewhere = await User.findOne({
+      'oauthProviders.provider': 'google',
+      'oauthProviders.providerId': googleId,
+    });
+    if (linkedElsewhere && linkedElsewhere._id.toString() !== payload.sub) {
+      return res.redirect(`${env.frontendOrigin}/profile?oauth=already_linked_elsewhere`);
+    }
+
+    const user = await User.findById(payload.sub);
+    if (!user) {
+      return res.redirect(`${env.frontendOrigin}/profile?oauth=link_error`);
+    }
+
+    const alreadyLinkedToSelf = user.oauthProviders.some(
+      (p) => p.provider === 'google' && p.providerId === googleId
+    );
+    if (!alreadyLinkedToSelf) {
+      user.oauthProviders.push({ provider: 'google', providerId: googleId });
+      await user.save();
+      logger.info('Google account linked', { userId: user._id.toString() });
+    }
+
+    return res.redirect(`${env.frontendOrigin}/profile?oauth=linked`);
+  } catch (err) {
+    next(err);
+  }
+}
+
 async function refresh(req, res, next) {
   try {
     const token = req.cookies?.refresh_token;
@@ -338,4 +444,6 @@ module.exports = {
   mfaSetup,
   mfaVerifySetup,
   mfaChallenge,
+  googleLoginCallback,
+  googleLinkCallback,
 };
