@@ -13,12 +13,13 @@ const {
 } = require('../controllers/auth.controller');
 const { strictAuthLimiter } = require('../middleware/rateLimit');
 const { requireAuth } = require('../middleware/auth');
+const { requireCaptcha } = require('../services/captchaService');
 const { passport, requireOAuthConfigured } = require('../services/oauthService');
 
 const router = express.Router();
 
-router.post('/register', strictAuthLimiter, register);
-router.post('/login', strictAuthLimiter, login);
+router.post('/register', strictAuthLimiter, requireCaptcha, register);
+router.post('/login', strictAuthLimiter, requireCaptcha, login);
 router.post('/refresh', refresh);
 router.post('/logout', logout);
 
