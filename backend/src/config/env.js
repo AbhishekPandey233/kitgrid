@@ -6,6 +6,7 @@ module.exports = {
   dbUri: process.env.DB_URI || 'mongodb://127.0.0.1:27017/kitgrid',
   redisUrl: process.env.REDIS_URL || 'redis://127.0.0.1:6379',
   frontendOrigin: process.env.FRONTEND_ORIGIN || 'http://localhost:5173',
+  backendOrigin: process.env.BACKEND_ORIGIN || 'http://localhost:5000',
   jwtSecret: process.env.JWT_SECRET,
   jwtRefreshSecret: process.env.JWT_REFRESH_SECRET,
   googleOAuthClientId: process.env.GOOGLE_OAUTH_CLIENT_ID,
