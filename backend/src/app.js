@@ -37,6 +37,8 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
+app.use('/api/auth', require('./routes/auth.routes'));
+
 // Must be registered last — Express recognizes error middleware by its 4-argument signature.
 app.use(errorHandler);
 
