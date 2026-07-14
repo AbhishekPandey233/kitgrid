@@ -14,4 +14,6 @@ module.exports = {
   captchaSecret: process.env.CAPTCHA_SECRET,
   etherealEmail: process.env.ETHEREAL_EMAIL,
   etherealPassword: process.env.ETHEREAL_PASSWORD,
+  // Comma-separated IPs that bypass IP-based login lockout (e.g. trusted office/CI IPs).
+  allowedIps: process.env.ALLOWED_IPS || '',
 };
