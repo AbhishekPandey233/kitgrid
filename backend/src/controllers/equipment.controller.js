@@ -1,5 +1,6 @@
 const { z } = require('zod');
 const Equipment = require('../models/Equipment');
+const { logAudit } = require('../middleware/auditLogger');
 
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 100;
@@ -89,6 +90,15 @@ async function createEquipment(req, res, next) {
     // ever reach Equipment.create() in the first place.
     const equipment = await Equipment.create({ ...parsed.data, createdBy: req.user._id });
 
+    await logAudit({
+      actorId: req.user._id,
+      action: 'equipment.created',
+      resourceType: 'Equipment',
+      resourceId: equipment._id,
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+
     return res.status(201).json({ equipment });
   } catch (err) {
     next(err);
@@ -110,6 +120,15 @@ async function updateEquipment(req, res, next) {
     Object.assign(equipment, parsed.data);
     await equipment.save();
 
+    await logAudit({
+      actorId: req.user._id,
+      action: 'equipment.updated',
+      resourceType: 'Equipment',
+      resourceId: equipment._id,
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+
     return res.status(200).json({ equipment });
   } catch (err) {
     if (err.name === 'CastError') {
@@ -125,6 +144,16 @@ async function deleteEquipment(req, res, next) {
     if (!equipment) {
       return res.status(404).json({ error: 'Equipment not found' });
     }
+
+    await logAudit({
+      actorId: req.user._id,
+      action: 'equipment.deleted',
+      resourceType: 'Equipment',
+      resourceId: equipment._id,
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+
     return res.status(204).send();
   } catch (err) {
     if (err.name === 'CastError') {

@@ -98,6 +98,8 @@ describe('Equipment CRUD (admin)', () => {
     test('creates equipment, sanitizes description, sets createdBy from the server', async () => {
       const req = {
         user: admin,
+        ip: '127.0.0.1',
+        headers: {},
         body: {
           name: 'Cordless Drill',
           description: '<script>alert(1)</script>18V, includes battery',
@@ -175,7 +177,13 @@ describe('Equipment CRUD (admin)', () => {
     });
 
     test('updates fields and re-sanitizes description', async () => {
-      const req = { params: { id: item._id.toString() }, body: { description: '<img src=x onerror=alert(1)>Now with description' } };
+      const req = {
+        user: admin,
+        ip: '127.0.0.1',
+        headers: {},
+        params: { id: item._id.toString() },
+        body: { description: '<img src=x onerror=alert(1)>Now with description' },
+      };
       const res = mockRes();
       await updateEquipment(req, res, jest.fn());
 
@@ -211,7 +219,7 @@ describe('Equipment CRUD (admin)', () => {
     });
 
     test('deletes equipment', async () => {
-      const req = { params: { id: item._id.toString() } };
+      const req = { user: admin, ip: '127.0.0.1', headers: {}, params: { id: item._id.toString() } };
       const res = mockRes();
       await deleteEquipment(req, res, jest.fn());
 
