@@ -199,6 +199,33 @@ async function listSessions(userId) {
   return sessions;
 }
 
+// CSRF token: an HMAC of the requester's session id, not a random value in a second
+// cookie. A plain cookie-vs-header double-submit token is vulnerable to an attacker who
+// can plant their own cookie for this origin (e.g. from a sibling subdomain) — signing the
+// session id instead means the token is only ever valid for the one session it was issued
+// for, verifiable without any server-side storage.
+function generateCsrfToken(sessionId) {
+  return crypto.createHmac('sha256', env.csrfSecret).update(sessionId).digest('hex');
+}
+
+function verifyCsrfToken(sessionId, token) {
+  if (!sessionId || !token || typeof token !== 'string') {
+    return false;
+  }
+
+  const expected = Buffer.from(generateCsrfToken(sessionId), 'hex');
+  const submitted = Buffer.from(token, 'hex');
+
+  // Length check first: timingSafeEqual throws on mismatched lengths, and a malformed
+  // (non-hex or wrong-length) header would otherwise crash the request instead of just
+  // failing verification.
+  if (expected.length !== submitted.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(expected, submitted);
+}
+
 const baseCookieOptions = {
   httpOnly: true,
   sameSite: 'strict',
@@ -230,6 +257,8 @@ module.exports = {
   signMfaPendingToken,
   verifyMfaPendingToken,
   computeFingerprint,
+  generateCsrfToken,
+  verifyCsrfToken,
   issueSession,
   rotateSession,
   revokeSession,
