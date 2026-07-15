@@ -22,4 +22,6 @@ module.exports = {
   // login. Off by default — can be too strict for clients whose User-Agent legitimately
   // varies (e.g. some mobile browsers), see tokenService.rotateSession.
   deviceBindingEnabled: process.env.DEVICE_BINDING_ENABLED === 'true',
+  // How long a password stays valid before login starts rejecting it as expired.
+  passwordExpiryDays: parseInt(process.env.PASSWORD_EXPIRY_DAYS, 10) || 90,
 };
