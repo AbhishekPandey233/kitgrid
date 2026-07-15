@@ -1,7 +1,9 @@
 const mongoose = require('mongoose');
 const User = require('../models/User');
 const AuditLog = require('../models/AuditLog');
+const SecurityAlert = require('../models/SecurityAlert');
 const { logAudit } = require('../middleware/auditLogger');
+const monitoringService = require('../services/monitoringService');
 const logger = require('../utils/logger');
 
 const ALLOWED_ROLES = ['customer', 'admin'];
@@ -97,4 +99,62 @@ async function listAuditLogs(req, res, next) {
   }
 }
 
-module.exports = { changeUserRole, listAuditLogs };
+// GET /api/admin/alerts — paginated, filterable by resolved status.
+async function listAlerts(req, res, next) {
+  try {
+    const filter = {};
+    if (typeof req.query.resolved === 'string' && ['true', 'false'].includes(req.query.resolved)) {
+      filter.resolved = req.query.resolved === 'true';
+    }
+
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || DEFAULT_PAGE_SIZE, 1), MAX_PAGE_SIZE);
+
+    const [alerts, total] = await Promise.all([
+      SecurityAlert.find(filter)
+        .sort({ timestamp: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit),
+      SecurityAlert.countDocuments(filter),
+    ]);
+
+    return res.status(200).json({
+      alerts,
+      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// PATCH /api/admin/alerts/:id/resolve
+async function resolveAlert(req, res, next) {
+  try {
+    const alert = await SecurityAlert.findById(req.params.id);
+    if (!alert) {
+      return res.status(404).json({ error: 'Alert not found' });
+    }
+
+    alert.resolved = true;
+    await alert.save();
+
+    // Best-effort: lets the same IP raise a fresh alert immediately if the behavior
+    // continues, rather than staying suppressed for the rest of the cooldown window after
+    // an admin has already acted on it. Must never block the actual "mark resolved" write
+    // above if Redis happens to be unreachable.
+    try {
+      await monitoringService.clearAlertCooldown(alert.ip);
+    } catch (err) {
+      logger.error('Failed to clear alert cooldown', { ip: alert.ip, error: err.message });
+    }
+
+    return res.status(200).json({ alert });
+  } catch (err) {
+    if (err.name === 'CastError') {
+      return res.status(404).json({ error: 'Alert not found' });
+    }
+    next(err);
+  }
+}
+
+module.exports = { changeUserRole, listAuditLogs, listAlerts, resolveAlert };
