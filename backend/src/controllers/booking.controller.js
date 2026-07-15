@@ -7,6 +7,7 @@ const Booking = require('../models/Booking');
 const Equipment = require('../models/Equipment');
 const HttpError = require('../utils/HttpError');
 const { pick } = require('../utils/pick');
+const { logAudit } = require('../middleware/auditLogger');
 
 // Bookings that still consume capacity. Deliberately broader than just "approved/active":
 // nothing in this system re-checks capacity at approval time (Phase 19's approve endpoint
@@ -150,6 +151,15 @@ async function createBooking(req, res, next) {
       await session.endSession();
     }
 
+    await logAudit({
+      actorId: req.user._id,
+      action: 'booking.created',
+      resourceType: 'Booking',
+      resourceId: createdBooking._id,
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+
     return res.status(201).json({ booking: createdBooking });
   } catch (err) {
     if (err instanceof HttpError) {
@@ -174,6 +184,15 @@ async function cancelBooking(req, res, next) {
     req.resource.status = 'cancelled';
     await req.resource.save();
 
+    await logAudit({
+      actorId: req.user._id,
+      action: 'booking.cancelled',
+      resourceType: 'Booking',
+      resourceId: req.resource._id,
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+
     return res.status(200).json({ booking: req.resource });
   } catch (err) {
     next(err);
@@ -192,8 +211,10 @@ async function cancelBooking(req, res, next) {
 // the state machine's whole point is that Booking.status can't be jumped to an arbitrary
 // value, only walked one defined edge at a time. decidedBy/decidedAt are stamped on every
 // transition below (not just approve/reject) so there's always a record of which admin last
-// acted on a booking.
-function makeTransitionHandler(from, to, extraFields = []) {
+// acted on a booking. Audit logging is wired into approve/reject specifically (per Phase
+// 20's spec — "booking creation/approval/rejection/cancellation"); mark-active/no-show/
+// returned aren't in that list.
+function makeTransitionHandler(from, to, { extraFields = [], auditAction } = {}) {
   return async function transition(req, res, next) {
     try {
       const booking = await Booking.findById(req.params.id);
@@ -216,6 +237,17 @@ function makeTransitionHandler(from, to, extraFields = []) {
 
       await booking.save();
 
+      if (auditAction) {
+        await logAudit({
+          actorId: req.user._id,
+          action: auditAction,
+          resourceType: 'Booking',
+          resourceId: booking._id,
+          ip: req.ip,
+          userAgent: req.headers['user-agent'],
+        });
+      }
+
       return res.status(200).json({ booking });
     } catch (err) {
       if (err.name === 'CastError') {
@@ -226,11 +258,11 @@ function makeTransitionHandler(from, to, extraFields = []) {
   };
 }
 
-const approveBooking = makeTransitionHandler('pending', 'approved');
-const rejectBooking = makeTransitionHandler('pending', 'rejected');
+const approveBooking = makeTransitionHandler('pending', 'approved', { auditAction: 'booking.approved' });
+const rejectBooking = makeTransitionHandler('pending', 'rejected', { auditAction: 'booking.rejected' });
 const markActive = makeTransitionHandler('approved', 'active');
 const markNoShow = makeTransitionHandler('approved', 'no_show');
-const markReturned = makeTransitionHandler('active', 'returned', ['conditionOnReturn']);
+const markReturned = makeTransitionHandler('active', 'returned', { extraFields: ['conditionOnReturn'] });
 
 module.exports = {
   getBooking,

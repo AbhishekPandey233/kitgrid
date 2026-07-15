@@ -108,6 +108,8 @@ describe('POST /api/bookings', () => {
 
       const req = {
         user: customerA,
+        ip: '127.0.0.1',
+        headers: {},
         body: { equipmentId: equipment._id.toString(), startDateTime: hoursFromNow(1), endDateTime: hoursFromNow(3), customerNote: '<script>x</script>fragile' },
       };
       const res = mockRes();
@@ -124,12 +126,12 @@ describe('POST /api/bookings', () => {
       equipmentIds.push(equipment._id);
 
       await createBooking(
-        { user: customerA, body: { equipmentId: equipment._id.toString(), startDateTime: hoursFromNow(10), endDateTime: hoursFromNow(12) } },
+        { user: customerA, ip: '127.0.0.1', headers: {}, body: { equipmentId: equipment._id.toString(), startDateTime: hoursFromNow(10), endDateTime: hoursFromNow(12) } },
         mockRes(),
         jest.fn()
       );
 
-      const req2 = { user: customerB, body: { equipmentId: equipment._id.toString(), startDateTime: hoursFromNow(11), endDateTime: hoursFromNow(13) } };
+      const req2 = { user: customerB, ip: '127.0.0.1', headers: {}, body: { equipmentId: equipment._id.toString(), startDateTime: hoursFromNow(11), endDateTime: hoursFromNow(13) } };
       const res2 = mockRes();
       await createBooking(req2, res2, jest.fn());
 
@@ -146,7 +148,7 @@ describe('POST /api/bookings', () => {
 
       const res1 = mockRes();
       await createBooking(
-        { user: customerA, body: { equipmentId: equipment._id.toString(), startDateTime: hoursFromNow(20), endDateTime: hoursFromNow(22) } },
+        { user: customerA, ip: '127.0.0.1', headers: {}, body: { equipmentId: equipment._id.toString(), startDateTime: hoursFromNow(20), endDateTime: hoursFromNow(22) } },
         res1,
         jest.fn()
       );
@@ -154,7 +156,7 @@ describe('POST /api/bookings', () => {
 
       const res2 = mockRes();
       await createBooking(
-        { user: customerB, body: { equipmentId: equipment._id.toString(), startDateTime: hoursFromNow(30), endDateTime: hoursFromNow(32) } },
+        { user: customerB, ip: '127.0.0.1', headers: {}, body: { equipmentId: equipment._id.toString(), startDateTime: hoursFromNow(30), endDateTime: hoursFromNow(32) } },
         res2,
         jest.fn()
       );
@@ -172,8 +174,8 @@ describe('POST /api/bookings', () => {
       equipmentIds.push(equipment._id);
 
       const window = { startDateTime: hoursFromNow(50), endDateTime: hoursFromNow(52) };
-      const reqA = { user: customerA, body: { equipmentId: equipment._id.toString(), ...window } };
-      const reqB = { user: customerB, body: { equipmentId: equipment._id.toString(), ...window } };
+      const reqA = { user: customerA, ip: '127.0.0.1', headers: {}, body: { equipmentId: equipment._id.toString(), ...window } };
+      const reqB = { user: customerB, ip: '127.0.0.1', headers: {}, body: { equipmentId: equipment._id.toString(), ...window } };
       const resA = mockRes();
       const resB = mockRes();
 
@@ -199,7 +201,7 @@ describe('POST /api/bookings', () => {
 
       const window = { startDateTime: hoursFromNow(60), endDateTime: hoursFromNow(62) };
       const attempts = Array.from({ length: 10 }, (_, i) => {
-        const req = { user: i % 2 === 0 ? customerA : customerB, body: { equipmentId: equipment._id.toString(), ...window } };
+        const req = { user: i % 2 === 0 ? customerA : customerB, ip: '127.0.0.1', headers: {}, body: { equipmentId: equipment._id.toString(), ...window } };
         const res = mockRes();
         return createBooking(req, res, (err) => { throw err; }).then(() => res);
       });
@@ -261,14 +263,14 @@ describe('Booking lifecycle (admin state machine + customer cancel)', () => {
     const booking = await freshPendingBooking();
 
     const approveRes = mockRes();
-    await approveBooking({ params: { id: booking._id.toString() }, user: admin, body: {} }, approveRes, jest.fn());
+    await approveBooking({ params: { id: booking._id.toString() }, user: admin, ip: '127.0.0.1', headers: {}, body: {} }, approveRes, jest.fn());
     expect(approveRes._status).toBe(200);
     expect(approveRes._body.booking.status).toBe('approved');
     expect(approveRes._body.booking.decidedBy.toString()).toBe(admin._id.toString());
     expect(approveRes._body.booking.decidedAt).toBeTruthy();
 
     const activeRes = mockRes();
-    await markActive({ params: { id: booking._id.toString() }, user: admin, body: {} }, activeRes, jest.fn());
+    await markActive({ params: { id: booking._id.toString() }, user: admin, ip: '127.0.0.1', headers: {}, body: {} }, activeRes, jest.fn());
     expect(activeRes._status).toBe(200);
     expect(activeRes._body.booking.status).toBe('active');
 
@@ -286,7 +288,7 @@ describe('Booking lifecycle (admin state machine + customer cancel)', () => {
   test('reject path: pending -> rejected', async () => {
     const booking = await freshPendingBooking();
     const res = mockRes();
-    await rejectBooking({ params: { id: booking._id.toString() }, user: admin, body: {} }, res, jest.fn());
+    await rejectBooking({ params: { id: booking._id.toString() }, user: admin, ip: '127.0.0.1', headers: {}, body: {} }, res, jest.fn());
 
     expect(res._status).toBe(200);
     expect(res._body.booking.status).toBe('rejected');
@@ -294,10 +296,10 @@ describe('Booking lifecycle (admin state machine + customer cancel)', () => {
 
   test('no-show path: pending -> approved -> no_show', async () => {
     const booking = await freshPendingBooking();
-    await approveBooking({ params: { id: booking._id.toString() }, user: admin, body: {} }, mockRes(), jest.fn());
+    await approveBooking({ params: { id: booking._id.toString() }, user: admin, ip: '127.0.0.1', headers: {}, body: {} }, mockRes(), jest.fn());
 
     const res = mockRes();
-    await markNoShow({ params: { id: booking._id.toString() }, user: admin, body: {} }, res, jest.fn());
+    await markNoShow({ params: { id: booking._id.toString() }, user: admin, ip: '127.0.0.1', headers: {}, body: {} }, res, jest.fn());
 
     expect(res._status).toBe(200);
     expect(res._body.booking.status).toBe('no_show');
@@ -307,7 +309,7 @@ describe('Booking lifecycle (admin state machine + customer cancel)', () => {
     test('cannot mark-returned a booking that was never active', async () => {
       const booking = await freshPendingBooking();
       const res = mockRes();
-      await markReturned({ params: { id: booking._id.toString() }, user: admin, body: {} }, res, jest.fn());
+      await markReturned({ params: { id: booking._id.toString() }, user: admin, ip: '127.0.0.1', headers: {}, body: {} }, res, jest.fn());
 
       expect(res._status).toBe(409);
       const reloaded = await Booking.findById(booking._id);
@@ -316,10 +318,10 @@ describe('Booking lifecycle (admin state machine + customer cancel)', () => {
 
     test('cannot approve an already-approved booking', async () => {
       const booking = await freshPendingBooking();
-      await approveBooking({ params: { id: booking._id.toString() }, user: admin, body: {} }, mockRes(), jest.fn());
+      await approveBooking({ params: { id: booking._id.toString() }, user: admin, ip: '127.0.0.1', headers: {}, body: {} }, mockRes(), jest.fn());
 
       const res = mockRes();
-      await approveBooking({ params: { id: booking._id.toString() }, user: admin, body: {} }, res, jest.fn());
+      await approveBooking({ params: { id: booking._id.toString() }, user: admin, ip: '127.0.0.1', headers: {}, body: {} }, res, jest.fn());
 
       expect(res._status).toBe(409);
     });
@@ -327,7 +329,7 @@ describe('Booking lifecycle (admin state machine + customer cancel)', () => {
     test('cannot mark-active a booking that was never approved', async () => {
       const booking = await freshPendingBooking();
       const res = mockRes();
-      await markActive({ params: { id: booking._id.toString() }, user: admin, body: {} }, res, jest.fn());
+      await markActive({ params: { id: booking._id.toString() }, user: admin, ip: '127.0.0.1', headers: {}, body: {} }, res, jest.fn());
 
       expect(res._status).toBe(409);
     });
@@ -337,7 +339,7 @@ describe('Booking lifecycle (admin state machine + customer cancel)', () => {
     test('customer can cancel their own pending booking', async () => {
       const booking = await freshPendingBooking();
       const res = mockRes();
-      await cancelBooking({ resource: booking }, res, jest.fn());
+      await cancelBooking({ resource: booking, user: customer, ip: '127.0.0.1', headers: {} }, res, jest.fn());
 
       expect(res._status).toBe(200);
       expect(res._body.booking.status).toBe('cancelled');
@@ -345,7 +347,7 @@ describe('Booking lifecycle (admin state machine + customer cancel)', () => {
 
     test('customer cannot cancel a booking that is no longer pending', async () => {
       const booking = await freshPendingBooking();
-      await approveBooking({ params: { id: booking._id.toString() }, user: admin, body: {} }, mockRes(), jest.fn());
+      await approveBooking({ params: { id: booking._id.toString() }, user: admin, ip: '127.0.0.1', headers: {}, body: {} }, mockRes(), jest.fn());
       const approved = await Booking.findById(booking._id);
 
       const res = mockRes();
