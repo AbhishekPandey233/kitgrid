@@ -1,7 +1,7 @@
 const express = require('express');
 const { requireAuth } = require('../middleware/auth');
 const { requireRole } = require('../middleware/rbac');
-const { changeUserRole } = require('../controllers/admin.controller');
+const { changeUserRole, listAuditLogs } = require('../controllers/admin.controller');
 const {
   approveBooking,
   rejectBooking,
@@ -20,5 +20,7 @@ router.patch('/bookings/:id/reject', ...requireAdmin, rejectBooking);
 router.patch('/bookings/:id/mark-active', ...requireAdmin, markActive);
 router.patch('/bookings/:id/mark-returned', ...requireAdmin, markReturned);
 router.patch('/bookings/:id/mark-no-show', ...requireAdmin, markNoShow);
+
+router.get('/audit-logs', ...requireAdmin, listAuditLogs);
 
 module.exports = router;

@@ -1,8 +1,12 @@
+const mongoose = require('mongoose');
 const User = require('../models/User');
 const AuditLog = require('../models/AuditLog');
+const { logAudit } = require('../middleware/auditLogger');
 const logger = require('../utils/logger');
 
 const ALLOWED_ROLES = ['customer', 'admin'];
+const DEFAULT_PAGE_SIZE = 20;
+const MAX_PAGE_SIZE = 100;
 
 // Deliberately separate from user.controller.js's updateMe — this is the ONE place in the
 // whole app that can ever write User.role, admin-only and independently audited, so a role
@@ -23,7 +27,7 @@ async function changeUserRole(req, res, next) {
     targetUser.role = role;
     await targetUser.save();
 
-    await AuditLog.create({
+    await logAudit({
       actorId: req.user._id,
       action: 'user.role_changed',
       resourceType: 'User',
@@ -48,4 +52,49 @@ async function changeUserRole(req, res, next) {
   }
 }
 
-module.exports = { changeUserRole };
+// GET /api/admin/audit-logs — paginated, filterable by action/actor/date range.
+async function listAuditLogs(req, res, next) {
+  try {
+    const filter = {};
+
+    if (typeof req.query.action === 'string' && req.query.action.trim()) {
+      filter.action = req.query.action.trim();
+    }
+    if (typeof req.query.actorId === 'string' && mongoose.isValidObjectId(req.query.actorId)) {
+      filter.actorId = req.query.actorId;
+    }
+
+    const timestamp = {};
+    if (typeof req.query.from === 'string') {
+      const fromDate = new Date(req.query.from);
+      if (!Number.isNaN(fromDate.getTime())) timestamp.$gte = fromDate;
+    }
+    if (typeof req.query.to === 'string') {
+      const toDate = new Date(req.query.to);
+      if (!Number.isNaN(toDate.getTime())) timestamp.$lte = toDate;
+    }
+    if (Object.keys(timestamp).length > 0) {
+      filter.timestamp = timestamp;
+    }
+
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || DEFAULT_PAGE_SIZE, 1), MAX_PAGE_SIZE);
+
+    const [logs, total] = await Promise.all([
+      AuditLog.find(filter)
+        .sort({ timestamp: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit),
+      AuditLog.countDocuments(filter),
+    ]);
+
+    return res.status(200).json({
+      auditLogs: logs,
+      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { changeUserRole, listAuditLogs };
