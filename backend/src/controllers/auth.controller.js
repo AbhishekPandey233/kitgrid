@@ -24,6 +24,16 @@ async function failLogin(res, ip) {
   return res.status(401).json({ error: 'Invalid email or password' });
 }
 
+// Device fingerprint for the optional device-binding feature (env.deviceBindingEnabled) —
+// hashes the User-Agent header together with a stable, client-generated device id sent as
+// X-Device-Id. Neither value is trusted on its own; the fingerprint is just a compensating
+// signal recorded at login and re-checked on refresh, not an identity claim.
+function getDeviceMeta(req) {
+  const userAgent = req.headers['user-agent'] || '';
+  const deviceId = req.headers['x-device-id'] || '';
+  return { userAgent, fingerprint: tokenService.computeFingerprint(userAgent, deviceId) };
+}
+
 function setAuthCookies(res, { accessToken, refreshToken }) {
   res.cookie('access_token', accessToken, tokenService.accessCookieOptions);
   res.cookie('refresh_token', refreshToken, tokenService.refreshCookieOptions);
@@ -165,7 +175,7 @@ async function login(req, res, next) {
 
     user.lastLogin = new Date();
 
-    const { accessToken, refreshToken } = await tokenService.issueSession(user);
+    const { accessToken, refreshToken } = await tokenService.issueSession(user, getDeviceMeta(req));
     setAuthCookies(res, { accessToken, refreshToken });
 
     await user.save();
@@ -257,7 +267,7 @@ async function mfaChallenge(req, res, next) {
 
     user.lastLogin = new Date();
 
-    const { accessToken, refreshToken } = await tokenService.issueSession(user);
+    const { accessToken, refreshToken } = await tokenService.issueSession(user, getDeviceMeta(req));
     setAuthCookies(res, { accessToken, refreshToken });
 
     await user.save();
@@ -316,7 +326,7 @@ async function googleLoginCallback(req, res, next) {
     }
 
     user.lastLogin = new Date();
-    const { accessToken, refreshToken } = await tokenService.issueSession(user);
+    const { accessToken, refreshToken } = await tokenService.issueSession(user, getDeviceMeta(req));
     setAuthCookies(res, { accessToken, refreshToken });
     await user.save();
 
@@ -401,18 +411,55 @@ async function refresh(req, res, next) {
       return res.status(401).json({ error: 'Invalid or expired refresh token' });
     }
 
-    const rotated = await tokenService.rotateSession({ userId, sessionId, jti }, user);
+    const rotated = await tokenService.rotateSession({ userId, sessionId, jti }, user, getDeviceMeta(req));
     if (!rotated) {
-      // Reuse of an already-rotated refresh token, or an unknown/expired session — the
-      // whole family was just revoked inside rotateSession(). Force re-login rather than
-      // trusting a token that's either stolen or stale.
+      // Reuse of an already-rotated refresh token, an unknown/expired session, or (if
+      // device binding is enabled) a device-fingerprint mismatch — the whole family was
+      // just revoked inside rotateSession(). Same generic response either way, so a caller
+      // can't tell which of those actually happened. Force re-login.
       clearAuthCookies(res);
-      logger.warn('Refresh token reuse or invalid session detected', { userId, sessionId });
+      logger.warn('Refresh rejected: reuse, invalid session, or device mismatch', { userId, sessionId });
       return res.status(401).json({ error: 'Session expired, please log in again' });
     }
 
     setAuthCookies(res, rotated);
     return res.status(200).json({ message: 'Token refreshed' });
+  } catch (err) {
+    next(err);
+  }
+}
+
+function getCurrentSessionId(req) {
+  const token = req.cookies?.refresh_token;
+  if (!token) return null;
+  try {
+    return tokenService.verifyRefreshToken(token).sid;
+  } catch (err) {
+    return null;
+  }
+}
+
+async function listSessionsForUser(req, res, next) {
+  try {
+    const sessions = await tokenService.listSessions(req.user._id.toString());
+    const currentSessionId = getCurrentSessionId(req);
+    const withCurrent = sessions
+      .map((s) => ({ ...s, current: s.sessionId === currentSessionId }))
+      .sort((a, b) => new Date(b.lastUsedAt) - new Date(a.lastUsedAt));
+
+    return res.status(200).json({ sessions: withCurrent });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function revokeSessionForUser(req, res, next) {
+  try {
+    // No separate ownership check needed: the Redis key is session:{req.user._id}:{id},
+    // so this can never touch another user's session regardless of what :id is supplied —
+    // deleting a key under someone else's prefix isn't reachable from here at all.
+    await tokenService.revokeSession(req.user._id.toString(), req.params.id);
+    return res.status(200).json({ message: 'Session revoked' });
   } catch (err) {
     next(err);
   }
@@ -446,4 +493,6 @@ module.exports = {
   mfaChallenge,
   googleLoginCallback,
   googleLinkCallback,
+  listSessionsForUser,
+  revokeSessionForUser,
 };
