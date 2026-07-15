@@ -37,6 +37,40 @@ function sessionKey(userId, sessionId) {
   return `session:${userId}:${sessionId}`;
 }
 
+const PASSWORD_RESET_TTL_SECONDS = 15 * 60;
+
+function passwordResetKey(hashedToken) {
+  return `password_reset:${hashedToken}`;
+}
+
+function hashResetToken(rawToken) {
+  return crypto.createHash('sha256').update(rawToken).digest('hex');
+}
+
+// Single-use, short-lived password reset token. Only the SHA-256 hash is stored (in Redis,
+// with a 15-minute TTL) — the raw token exists only in the emailed link and the request
+// that redeems it, so a Redis compromise alone can't be turned back into a working reset
+// link (the hash can't be reversed to recover the raw token needed to hit the endpoint).
+async function issuePasswordResetToken(userId) {
+  const rawToken = crypto.randomBytes(32).toString('hex');
+  await redisClient.set(passwordResetKey(hashResetToken(rawToken)), userId.toString(), {
+    EX: PASSWORD_RESET_TTL_SECONDS,
+  });
+  return rawToken;
+}
+
+// Returns the userId the token was issued for, or null if it's invalid/expired. Doesn't
+// consume the token — the caller decides when to consume it (only after a fully successful
+// reset, so a token isn't burned by e.g. a new-password policy-validation failure).
+async function verifyPasswordResetToken(rawToken) {
+  if (!rawToken) return null;
+  return redisClient.get(passwordResetKey(hashResetToken(rawToken)));
+}
+
+async function consumePasswordResetToken(rawToken) {
+  await redisClient.del(passwordResetKey(hashResetToken(rawToken)));
+}
+
 // Device binding (optional, env.deviceBindingEnabled): hash of User-Agent + a stable
 // client-generated device id (sent as the X-Device-Id header), stored alongside the
 // session at login and re-checked on every refresh.
@@ -171,6 +205,13 @@ async function revokeSession(userId, sessionId) {
   await redisClient.del(sessionKey(userId, sessionId));
 }
 
+// Revokes every session for a user in one go — used after a password reset, which should
+// force every existing device to re-authenticate, not just invalidate the one link.
+async function revokeAllSessions(userId) {
+  const keys = await redisClient.keys(sessionKey(userId, '*'));
+  await Promise.all(keys.map((key) => redisClient.del(key)));
+}
+
 // Lists a user's own active sessions. Scoped by construction to session:{userId}:* — there
 // is no way to enumerate or touch another user's sessions through this function.
 async function listSessions(userId) {
@@ -262,7 +303,11 @@ module.exports = {
   issueSession,
   rotateSession,
   revokeSession,
+  revokeAllSessions,
   listSessions,
+  issuePasswordResetToken,
+  verifyPasswordResetToken,
+  consumePasswordResetToken,
   accessCookieOptions,
   refreshCookieOptions,
 };
