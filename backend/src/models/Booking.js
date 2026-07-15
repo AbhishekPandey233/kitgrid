@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { sanitizeHtml } = require('../middleware/sanitize');
 
 const { Schema } = mongoose;
 
@@ -13,8 +14,10 @@ const bookingSchema = new Schema(
       enum: ['pending', 'approved', 'rejected', 'active', 'returned', 'no_show', 'cancelled'],
       default: 'pending',
     },
-    customerNote: { type: String, default: '' },
-    adminNote: { type: String, default: '' },
+    // Setters run on every assignment, so these are sanitized on write regardless of which
+    // controller (customer note update, admin note on approval, etc.) sets them.
+    customerNote: { type: String, default: '', set: sanitizeHtml },
+    adminNote: { type: String, default: '', set: sanitizeHtml },
     conditionOnReturn: { type: String, default: '' },
     decidedBy: { type: Schema.Types.ObjectId, ref: 'User' },
     decidedAt: { type: Date },
