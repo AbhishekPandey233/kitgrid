@@ -17,4 +17,8 @@ module.exports = {
   etherealPassword: process.env.ETHEREAL_PASSWORD,
   // Comma-separated IPs that bypass IP-based login lockout (e.g. trusted office/CI IPs).
   allowedIps: process.env.ALLOWED_IPS || '',
+  // Reject refresh attempts whose device fingerprint doesn't match the one recorded at
+  // login. Off by default — can be too strict for clients whose User-Agent legitimately
+  // varies (e.g. some mobile browsers), see tokenService.rotateSession.
+  deviceBindingEnabled: process.env.DEVICE_BINDING_ENABLED === 'true',
 };
