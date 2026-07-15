@@ -37,6 +37,16 @@ function sessionKey(userId, sessionId) {
   return `session:${userId}:${sessionId}`;
 }
 
+// Device binding (optional, env.deviceBindingEnabled): hash of User-Agent + a stable
+// client-generated device id (sent as the X-Device-Id header), stored alongside the
+// session at login and re-checked on every refresh.
+function computeFingerprint(userAgent, deviceId) {
+  return crypto
+    .createHash('sha256')
+    .update(`${userAgent || ''}:${deviceId || ''}`)
+    .digest('hex');
+}
+
 function signAccessToken(user) {
   return jwt.sign({ sub: user._id.toString(), role: user.role, purpose: 'access' }, env.jwtSecret, {
     expiresIn: ACCESS_TOKEN_TTL,
@@ -81,12 +91,23 @@ function verifyMfaPendingToken(token) {
   return payload;
 }
 
-// Login: starts a new session ("family") and whitelists its first refresh token jti.
-async function issueSession(user) {
+// Login: always mints a brand-new session id ("family") — never reused/derived from
+// anything client-supplied — which is what actually prevents session fixation: there is no
+// way for an attacker to pre-seed a session identifier that a victim's login would adopt.
+async function issueSession(user, meta = {}) {
   const sessionId = crypto.randomUUID();
   const jti = crypto.randomUUID();
+  const now = new Date().toISOString();
 
-  await redisClient.set(sessionKey(user._id.toString(), sessionId), jti, {
+  const record = {
+    jti,
+    fingerprint: meta.fingerprint || null,
+    userAgent: meta.userAgent || null,
+    createdAt: now,
+    lastUsedAt: now,
+  };
+
+  await redisClient.set(sessionKey(user._id.toString(), sessionId), JSON.stringify(record), {
     EX: REFRESH_TOKEN_TTL_SECONDS,
   });
 
@@ -98,20 +119,47 @@ async function issueSession(user) {
 }
 
 // Rotates the refresh token within an existing session. Returns null if the presented jti
-// isn't the one currently whitelisted for this session — that means either a stale/already-
-// rotated token is being replayed (theft signal) or the session was revoked, and either way
+// isn't the one currently whitelisted for this session (stale/already-rotated token being
+// replayed — a theft signal — or an unknown/expired session), or if device binding is
+// enabled and the presented fingerprint doesn't match the one recorded at login. Either way
 // the whole session is deleted so the family can't be used again.
-async function rotateSession({ userId, sessionId, jti }, user) {
+async function rotateSession({ userId, sessionId, jti }, user, meta = {}) {
   const key = sessionKey(userId, sessionId);
-  const currentJti = await redisClient.get(key);
+  const raw = await redisClient.get(key);
+  if (!raw) {
+    return null;
+  }
 
-  if (!currentJti || currentJti !== jti) {
+  let record;
+  try {
+    record = JSON.parse(raw);
+  } catch (err) {
+    await redisClient.del(key);
+    return null;
+  }
+
+  if (record.jti !== jti) {
+    await redisClient.del(key);
+    return null;
+  }
+
+  if (
+    env.deviceBindingEnabled &&
+    record.fingerprint &&
+    meta.fingerprint &&
+    record.fingerprint !== meta.fingerprint
+  ) {
     await redisClient.del(key);
     return null;
   }
 
   const newJti = crypto.randomUUID();
-  await redisClient.set(key, newJti, { EX: REFRESH_TOKEN_TTL_SECONDS });
+  const updated = {
+    ...record,
+    jti: newJti,
+    lastUsedAt: new Date().toISOString(),
+  };
+  await redisClient.set(key, JSON.stringify(updated), { EX: REFRESH_TOKEN_TTL_SECONDS });
 
   return {
     accessToken: signAccessToken(user),
@@ -121,6 +169,34 @@ async function rotateSession({ userId, sessionId, jti }, user) {
 
 async function revokeSession(userId, sessionId) {
   await redisClient.del(sessionKey(userId, sessionId));
+}
+
+// Lists a user's own active sessions. Scoped by construction to session:{userId}:* — there
+// is no way to enumerate or touch another user's sessions through this function.
+async function listSessions(userId) {
+  const keys = await redisClient.keys(sessionKey(userId, '*'));
+  const sessions = [];
+
+  for (const key of keys) {
+    const raw = await redisClient.get(key);
+    if (!raw) continue;
+
+    let record;
+    try {
+      record = JSON.parse(raw);
+    } catch (err) {
+      continue;
+    }
+
+    sessions.push({
+      sessionId: key.slice(key.lastIndexOf(':') + 1),
+      userAgent: record.userAgent,
+      createdAt: record.createdAt,
+      lastUsedAt: record.lastUsedAt,
+    });
+  }
+
+  return sessions;
 }
 
 const baseCookieOptions = {
@@ -153,9 +229,11 @@ module.exports = {
   verifyRefreshToken,
   signMfaPendingToken,
   verifyMfaPendingToken,
+  computeFingerprint,
   issueSession,
   rotateSession,
   revokeSession,
+  listSessions,
   accessCookieOptions,
   refreshCookieOptions,
 };
