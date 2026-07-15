@@ -439,6 +439,22 @@ function getCurrentSessionId(req) {
   }
 }
 
+// GET /api/csrf-token — bound to the refresh session, not the access token, since a user
+// whose access token just expired (but whose refresh session is still valid) should still
+// be able to fetch one without a round trip through /refresh first.
+async function getCsrfToken(req, res, next) {
+  try {
+    const sessionId = getCurrentSessionId(req);
+    if (!sessionId) {
+      return res.status(401).json({ error: 'No active session' });
+    }
+
+    return res.status(200).json({ csrfToken: tokenService.generateCsrfToken(sessionId) });
+  } catch (err) {
+    next(err);
+  }
+}
+
 async function listSessionsForUser(req, res, next) {
   try {
     const sessions = await tokenService.listSessions(req.user._id.toString());
@@ -495,4 +511,5 @@ module.exports = {
   googleLinkCallback,
   listSessionsForUser,
   revokeSessionForUser,
+  getCsrfToken,
 };
