@@ -1,6 +1,32 @@
+# Dependencies
 node_modules/
+
+# Environment / secrets
 .env
+.env.local
+.env.*.local
+
+# Build output
 dist/
+build/
+
+# Logs
 *.log
 logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Test coverage
+coverage/
+
+# Editor / IDE
+.vscode/
+.idea/
+
+# OS junk
 .DS_Store
+Thumbs.db
+
+# Stray temp scripts (ad-hoc verification scripts during development)
+*.tmp.js

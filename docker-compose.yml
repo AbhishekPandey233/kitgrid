@@ -3,12 +3,20 @@ services:
     image: mongo:7
     container_name: kitgrid-mongo
     restart: unless-stopped
+    # Single-node replica set — required for multi-document transactions (Phase 18's
+    # booking overlap/quantity check), which a plain standalone mongod doesn't support.
+    command: ["--replSet", "rs0", "--bind_ip_all"]
     ports:
       - "27017:27017"
     volumes:
       - mongo_data:/data/db
     networks:
       - kitgrid-net
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   redis:
     image: redis:7-alpine
