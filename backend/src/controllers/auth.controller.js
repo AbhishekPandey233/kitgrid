@@ -6,6 +6,7 @@ const tokenService = require('../services/tokenService');
 const mfaService = require('../services/mfaService');
 const rateLimitHelpers = require('../middleware/rateLimit');
 const { logAudit } = require('../middleware/auditLogger');
+const monitoringService = require('../services/monitoringService');
 const logger = require('../utils/logger');
 
 const FAILED_ATTEMPTS_LOCKOUT_THRESHOLD = 12;
@@ -24,6 +25,7 @@ function computeLockoutDurationMs(priorLockoutCount) {
 // not when the email itself didn't match anything.
 async function failLogin(res, req, userId) {
   await rateLimitHelpers.recordFailedLoginFromIp(req.ip);
+  await monitoringService.recordFailedLoginForAlerting(req.ip);
   await logAudit({
     actorId: userId,
     action: 'auth.login_failure',
