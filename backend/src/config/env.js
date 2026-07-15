@@ -9,6 +9,7 @@ module.exports = {
   backendOrigin: process.env.BACKEND_ORIGIN || 'http://localhost:5000',
   jwtSecret: process.env.JWT_SECRET,
   jwtRefreshSecret: process.env.JWT_REFRESH_SECRET,
+  csrfSecret: process.env.CSRF_SECRET || process.env.JWT_SECRET,
   googleOAuthClientId: process.env.GOOGLE_OAUTH_CLIENT_ID,
   googleOAuthClientSecret: process.env.GOOGLE_OAUTH_CLIENT_SECRET,
   mfaEncryptionKey: process.env.MFA_ENCRYPTION_KEY,
