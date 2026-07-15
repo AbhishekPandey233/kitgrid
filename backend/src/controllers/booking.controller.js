@@ -1,12 +1,12 @@
-// Single-resource booking actions (get/update/delete own booking) plus creation.
-// Admin lifecycle transitions and the proper customer /cancel endpoint are Phase 19 — this
-// file grows to hold those too.
+// Single-resource booking actions (get/update/delete own booking), creation, the admin
+// lifecycle state machine, and the customer-only cancel endpoint.
 
 const mongoose = require('mongoose');
 const { z } = require('zod');
 const Booking = require('../models/Booking');
 const Equipment = require('../models/Equipment');
 const HttpError = require('../utils/HttpError');
+const { pick } = require('../utils/pick');
 
 // Bookings that still consume capacity. Deliberately broader than just "approved/active":
 // nothing in this system re-checks capacity at approval time (Phase 19's approve endpoint
@@ -159,4 +159,88 @@ async function createBooking(req, res, next) {
   }
 }
 
-module.exports = { getBooking, updateBooking, deleteBooking, createBooking };
+// Customer-only cancellation — deliberately a separate endpoint from updateBooking above,
+// restricted to 'pending' bookings only. Once a booking is approved, cancelling it needs
+// admin coordination (the equipment may already be set aside), so this intentionally
+// doesn't extend to any other status.
+async function cancelBooking(req, res, next) {
+  try {
+    if (req.resource.status !== 'pending') {
+      return res.status(409).json({
+        error: `Cannot cancel a booking with status '${req.resource.status}' (only pending bookings can be cancelled)`,
+      });
+    }
+
+    req.resource.status = 'cancelled';
+    await req.resource.save();
+
+    return res.status(200).json({ booking: req.resource });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Admin lifecycle state machine. Each named transition is only legal from one specific
+// starting status:
+//   approve:      pending  -> approved
+//   reject:       pending  -> rejected
+//   markActive:   approved -> active      (pickup)
+//   markNoShow:   approved -> no_show     (never picked up)
+//   markReturned: active   -> returned
+// Anything else (e.g. mark-returned on a booking that was never active, or approving an
+// already-approved booking) is rejected with 409 rather than silently no-op'd or coerced —
+// the state machine's whole point is that Booking.status can't be jumped to an arbitrary
+// value, only walked one defined edge at a time. decidedBy/decidedAt are stamped on every
+// transition below (not just approve/reject) so there's always a record of which admin last
+// acted on a booking.
+function makeTransitionHandler(from, to, extraFields = []) {
+  return async function transition(req, res, next) {
+    try {
+      const booking = await Booking.findById(req.params.id);
+      if (!booking) {
+        return res.status(404).json({ error: 'Booking not found' });
+      }
+
+      if (booking.status !== from) {
+        return res.status(409).json({
+          error: `Cannot transition booking from '${booking.status}' to '${to}' (expected '${from}')`,
+        });
+      }
+
+      const updates = pick(req.body || {}, ['adminNote', ...extraFields]);
+      Object.assign(booking, updates);
+
+      booking.status = to;
+      booking.decidedBy = req.user._id;
+      booking.decidedAt = new Date();
+
+      await booking.save();
+
+      return res.status(200).json({ booking });
+    } catch (err) {
+      if (err.name === 'CastError') {
+        return res.status(404).json({ error: 'Booking not found' });
+      }
+      next(err);
+    }
+  };
+}
+
+const approveBooking = makeTransitionHandler('pending', 'approved');
+const rejectBooking = makeTransitionHandler('pending', 'rejected');
+const markActive = makeTransitionHandler('approved', 'active');
+const markNoShow = makeTransitionHandler('approved', 'no_show');
+const markReturned = makeTransitionHandler('active', 'returned', ['conditionOnReturn']);
+
+module.exports = {
+  getBooking,
+  updateBooking,
+  deleteBooking,
+  createBooking,
+  cancelBooking,
+  approveBooking,
+  rejectBooking,
+  markActive,
+  markNoShow,
+  markReturned,
+};
