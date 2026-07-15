@@ -6,7 +6,9 @@ const env = require('./config/env');
 const errorHandler = require('./middleware/errorHandler');
 const { globalLimiter } = require('./middleware/rateLimit');
 const { mongoSanitizeMiddleware } = require('./middleware/sanitize');
+const { requireCsrfToken } = require('./middleware/csrf');
 const { passport } = require('./services/oauthService');
+const { getCsrfToken } = require('./controllers/auth.controller');
 
 const app = express();
 
@@ -38,10 +40,13 @@ app.use(cookieParser());
 app.use(mongoSanitizeMiddleware);
 app.use(globalLimiter);
 app.use(passport.initialize());
+app.use(requireCsrfToken);
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
+
+app.get('/api/csrf-token', getCsrfToken);
 
 app.use('/api/auth', require('./routes/auth.routes'));
 app.use('/api/bookings', require('./routes/booking.routes'));
