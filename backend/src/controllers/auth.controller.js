@@ -7,11 +7,13 @@ const mfaService = require('../services/mfaService');
 const rateLimitHelpers = require('../middleware/rateLimit');
 const { logAudit } = require('../middleware/auditLogger');
 const monitoringService = require('../services/monitoringService');
+const emailService = require('../services/emailService');
 const logger = require('../utils/logger');
 
 const FAILED_ATTEMPTS_LOCKOUT_THRESHOLD = 12;
 const BASE_LOCKOUT_MS = 15 * 60 * 1000;
 const MAX_LOCKOUT_MS = 24 * 60 * 60 * 1000; // cap runaway exponential growth at 24h
+const PASSWORD_EXPIRY_MS = env.passwordExpiryDays * 24 * 60 * 60 * 1000;
 
 function computeLockoutDurationMs(priorLockoutCount) {
   return Math.min(BASE_LOCKOUT_MS * 2 ** priorLockoutCount, MAX_LOCKOUT_MS);
@@ -189,10 +191,22 @@ async function login(req, res, next) {
       return res.status(403).json({ error: 'Account is suspended' });
     }
 
-    // Password verified — clear brute-force state regardless of whether MFA is required next.
+    // Password verified — clear brute-force state regardless of what happens next (expiry
+    // rejection, MFA, or straight through to a session).
     user.failedLoginAttempts = 0;
     user.lockoutCount = 0;
     user.lockoutUntil = undefined;
+
+    // Password expiry — checked right after password verification, before MFA: an expired
+    // password needs resetting regardless of MFA status, so there's no point continuing.
+    if (user.passwordChangedAt && Date.now() - user.passwordChangedAt.getTime() > PASSWORD_EXPIRY_MS) {
+      await user.save();
+      logger.info('Login rejected: password expired', { userId: user._id.toString() });
+      return res.status(403).json({
+        error: 'Your password has expired and must be reset',
+        passwordExpired: true,
+      });
+    }
 
     if (user.mfaEnabled) {
       await user.save();
@@ -323,6 +337,127 @@ async function mfaChallenge(req, res, next) {
   } catch (err) {
     next(err);
   }
+}
+
+// POST /api/auth/forgot-password — always the same generic response regardless of whether
+// the account exists, so this endpoint can never be used to enumerate registered emails.
+async function forgotPassword(req, res, next) {
+  try {
+    const { email } = req.body || {};
+    const genericResponse = () =>
+      res.status(200).json({ message: 'If an account with that email exists, a reset link has been sent.' });
+
+    if (!email) {
+      return genericResponse();
+    }
+
+    const normalizedEmail = String(email).trim().toLowerCase();
+    const user = await User.findOne({ email: normalizedEmail });
+
+    if (user) {
+      const rawToken = await tokenService.issuePasswordResetToken(user._id.toString());
+      const resetUrl = `${env.frontendOrigin}/reset-password/${rawToken}`;
+
+      try {
+        await emailService.sendPasswordResetEmail(user.email, resetUrl);
+      } catch (err) {
+        // Sending failed (e.g. Ethereal hiccup) — still return the generic response either
+        // way; don't let email delivery status leak whether the account exists, and the
+        // user can just request again.
+        logger.error('Failed to send password reset email', { userId: user._id.toString(), error: err.message });
+      }
+
+      await logAudit({
+        actorId: user._id,
+        action: 'auth.password_reset_requested',
+        resourceType: 'User',
+        resourceId: user._id,
+        ip: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
+    }
+
+    return genericResponse();
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST /api/auth/reset-password/:token
+async function resetPassword(req, res, next) {
+  try {
+    const { token } = req.params;
+    const { password } = req.body || {};
+    if (!password) {
+      return res.status(400).json({ error: 'password is required' });
+    }
+
+    const userId = await tokenService.verifyPasswordResetToken(token);
+    if (!userId) {
+      return res.status(400).json({ error: 'Invalid or expired reset token' });
+    }
+
+    const user = await User.findById(userId).select('+passwordHash +passwordHistory');
+    if (!user) {
+      return res.status(400).json({ error: 'Invalid or expired reset token' });
+    }
+
+    const { valid, errors, strength } = passwordPolicy.validate(password, {
+      name: user.name,
+      email: user.email,
+    });
+    if (!valid) {
+      return res.status(400).json({
+        error: 'Password does not meet policy requirements',
+        details: errors,
+        strength,
+      });
+    }
+
+    if (await passwordPolicy.checkReuse(password, user.passwordHistory)) {
+      return res.status(400).json({ error: 'That password was used recently — choose a different one' });
+    }
+
+    const passwordHash = await passwordPolicy.hashPassword(password);
+    user.passwordHash = passwordHash;
+    user.passwordHistory = passwordPolicy.addToHistory(user.passwordHistory, passwordHash);
+    user.passwordChangedAt = new Date();
+    // A successful reset is a strong signal of legitimate access recovery — clear any
+    // brute-force state too, same as a successful login would.
+    user.failedLoginAttempts = 0;
+    user.lockoutCount = 0;
+    user.lockoutUntil = undefined;
+    await user.save();
+
+    // Force every existing session to re-authenticate — a password reset invalidates ALL
+    // prior sessions/devices, not just the one that requested it.
+    await tokenService.revokeAllSessions(user._id.toString());
+    await tokenService.consumePasswordResetToken(token);
+
+    logger.info('Password reset completed', { userId: user._id.toString() });
+    await logAudit({
+      actorId: user._id,
+      action: 'auth.password_reset_completed',
+      resourceType: 'User',
+      resourceId: user._id,
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+
+    return res.status(200).json({ message: 'Password has been reset. Please log in again.' });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// GET /api/auth/debug/last-emails — dev/demo convenience only, so the Ethereal reset link
+// can actually be seen and clicked (Ethereal never delivers to a real inbox). Never
+// available in production: exposing this there would let anyone read any reset link.
+async function getDebugEmails(req, res) {
+  if (env.nodeEnv === 'production') {
+    return res.status(404).end();
+  }
+  return res.status(200).json({ emails: emailService.getRecentPreviews() });
 }
 
 function googleProfileEmail(profile) {
@@ -555,4 +690,7 @@ module.exports = {
   listSessionsForUser,
   revokeSessionForUser,
   getCsrfToken,
+  forgotPassword,
+  resetPassword,
+  getDebugEmails,
 };
