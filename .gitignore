@@ -30,3 +30,6 @@ Thumbs.db
 
 # Stray temp scripts (ad-hoc verification scripts during development)
 *.tmp.js
+
+# Docs (coursework write-ups, pentest evidence, etc.) kept local, not committed
+docs/
