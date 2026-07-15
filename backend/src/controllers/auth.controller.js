@@ -5,6 +5,7 @@ const passwordPolicy = require('../services/passwordPolicy');
 const tokenService = require('../services/tokenService');
 const mfaService = require('../services/mfaService');
 const rateLimitHelpers = require('../middleware/rateLimit');
+const { logAudit } = require('../middleware/auditLogger');
 const logger = require('../utils/logger');
 
 const FAILED_ATTEMPTS_LOCKOUT_THRESHOLD = 12;
@@ -17,10 +18,20 @@ function computeLockoutDurationMs(priorLockoutCount) {
 
 // Generic failure for login: same status/message whether the account doesn't exist, has
 // no password (OAuth-only), is currently locked out, or the password is simply wrong —
-// none of those should be distinguishable to the caller. Also feeds IP-level tracking,
-// which is independent of whether the target account exists at all.
-async function failLogin(res, ip) {
-  await rateLimitHelpers.recordFailedLoginFromIp(ip);
+// none of those should be distinguishable to the caller. Also feeds IP-level tracking
+// (independent of whether the target account exists at all) and the audit trail — userId
+// is only known when the attempt matched a real account (wrong password, locked account),
+// not when the email itself didn't match anything.
+async function failLogin(res, req, userId) {
+  await rateLimitHelpers.recordFailedLoginFromIp(req.ip);
+  await logAudit({
+    actorId: userId,
+    action: 'auth.login_failure',
+    resourceType: 'User',
+    resourceId: userId,
+    ip: req.ip,
+    userAgent: req.headers['user-agent'],
+  });
   return res.status(401).json({ error: 'Invalid email or password' });
 }
 
@@ -94,6 +105,14 @@ async function register(req, res, next) {
     });
 
     logger.info('User registered', { userId: user._id.toString() });
+    await logAudit({
+      actorId: user._id,
+      action: 'auth.register',
+      resourceType: 'User',
+      resourceId: user._id,
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
 
     // 201, no sensitive data (passwordHash, etc.) echoed back — login/session comes in Phase 5.
     return res.status(201).json({
@@ -123,17 +142,17 @@ async function login(req, res, next) {
     const user = await User.findOne({ email: normalizedEmail }).select('+passwordHash');
 
     if (!user) {
-      return await failLogin(res, ip);
+      return await failLogin(res, req);
     }
 
     // Locked accounts are rejected before ever comparing the password — same generic
     // response as "wrong password", so a caller can't tell lockout apart from a bad guess.
     if (user.lockoutUntil && user.lockoutUntil > new Date()) {
-      return await failLogin(res, ip);
+      return await failLogin(res, req, user._id);
     }
 
     if (!user.passwordHash) {
-      return await failLogin(res, ip);
+      return await failLogin(res, req, user._id);
     }
 
     const passwordMatches = await passwordPolicy.comparePassword(password, user.passwordHash);
@@ -150,10 +169,18 @@ async function login(req, res, next) {
           lockoutCount: user.lockoutCount,
           durationMs,
         });
+        await logAudit({
+          actorId: user._id,
+          action: 'auth.account_locked',
+          resourceType: 'User',
+          resourceId: user._id,
+          ip: req.ip,
+          userAgent: req.headers['user-agent'],
+        });
       }
 
       await user.save();
-      return await failLogin(res, ip);
+      return await failLogin(res, req, user._id);
     }
 
     if (user.status === 'suspended') {
@@ -181,6 +208,14 @@ async function login(req, res, next) {
     await user.save();
 
     logger.info('User logged in', { userId: user._id.toString() });
+    await logAudit({
+      actorId: user._id,
+      action: 'auth.login_success',
+      resourceType: 'User',
+      resourceId: user._id,
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
 
     return res.status(200).json({
       user: { id: user._id, name: user.name, email: user.email, role: user.role },
@@ -248,20 +283,25 @@ async function mfaChallenge(req, res, next) {
       return res.status(400).json({ error: 'mfaPendingToken and token are required' });
     }
 
+    const auditBase = { resourceType: 'User', ip: req.ip, userAgent: req.headers['user-agent'] };
+
     let payload;
     try {
       payload = tokenService.verifyMfaPendingToken(mfaPendingToken);
     } catch (err) {
+      await logAudit({ ...auditBase, action: 'auth.mfa_challenge_failure' });
       return res.status(401).json({ error: 'Invalid or expired MFA challenge' });
     }
 
     const user = await User.findById(payload.sub).select('+mfaSecretEncrypted');
     if (!user || user.status === 'suspended' || !user.mfaEnabled || !user.mfaSecretEncrypted) {
+      await logAudit({ ...auditBase, action: 'auth.mfa_challenge_failure', actorId: payload.sub, resourceId: payload.sub });
       return res.status(401).json({ error: 'Invalid or expired MFA challenge' });
     }
 
     const secret = mfaService.decryptSecret(user.mfaSecretEncrypted);
     if (!mfaService.verifyToken(token, secret)) {
+      await logAudit({ ...auditBase, action: 'auth.mfa_challenge_failure', actorId: user._id, resourceId: user._id });
       return res.status(401).json({ error: 'Invalid code' });
     }
 
@@ -273,6 +313,7 @@ async function mfaChallenge(req, res, next) {
     await user.save();
 
     logger.info('MFA challenge succeeded', { userId: user._id.toString() });
+    await logAudit({ ...auditBase, action: 'auth.mfa_challenge_success', actorId: user._id, resourceId: user._id });
 
     return res.status(200).json({
       user: { id: user._id, name: user.name, email: user.email, role: user.role },
