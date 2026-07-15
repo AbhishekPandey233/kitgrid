@@ -35,6 +35,11 @@ const userSchema = new Schema(
     lockoutCount: { type: Number, default: 0 },
     status: { type: String, enum: ['active', 'suspended'], default: 'active' },
     lastLogin: { type: Date },
+    phone: { type: String, default: '', trim: true },
+    notificationPreferences: {
+      email: { type: Boolean, default: true },
+      sms: { type: Boolean, default: false },
+    },
   },
   { timestamps: true }
 );
