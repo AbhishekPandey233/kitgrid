@@ -10,6 +10,8 @@ const {
   mfaChallenge,
   googleLoginCallback,
   googleLinkCallback,
+  listSessionsForUser,
+  revokeSessionForUser,
 } = require('../controllers/auth.controller');
 const { strictAuthLimiter } = require('../middleware/rateLimit');
 const { requireAuth } = require('../middleware/auth');
@@ -26,6 +28,11 @@ router.post('/logout', logout);
 router.post('/mfa/setup', requireAuth, mfaSetup);
 router.post('/mfa/verify-setup', strictAuthLimiter, requireAuth, mfaVerifySetup);
 router.post('/mfa/challenge', strictAuthLimiter, mfaChallenge);
+
+// Listing is a read-only, idempotent lookup, so GET rather than POST — the more
+// conventional REST verb for "list my own sessions".
+router.get('/sessions', requireAuth, listSessionsForUser);
+router.delete('/sessions/:id', requireAuth, revokeSessionForUser);
 
 router.get(
   '/google',
