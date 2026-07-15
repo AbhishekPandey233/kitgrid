@@ -9,6 +9,7 @@ const bookingSchema = new Schema(
     customerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     startDateTime: { type: Date, required: true },
     endDateTime: { type: Date, required: true },
+    quantity: { type: Number, default: 1, min: 1 },
     status: {
       type: String,
       enum: ['pending', 'approved', 'rejected', 'active', 'returned', 'no_show', 'cancelled'],
