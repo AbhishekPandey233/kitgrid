@@ -1,11 +1,14 @@
 const mongoose = require('mongoose');
+const { sanitizeHtml } = require('../middleware/sanitize');
 
 const { Schema } = mongoose;
 
 const equipmentSchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
-    description: { type: String, default: '' },
+    // Setter runs on every assignment (new Equipment(), .create(), doc.description = x),
+    // so this is sanitized on write regardless of which controller sets it.
+    description: { type: String, default: '', set: sanitizeHtml },
     category: { type: String, trim: true },
     quantityAvailable: { type: Number, required: true, min: 0 },
     photos: { type: [String], default: [] },
