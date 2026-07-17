@@ -6,12 +6,6 @@ const AuditLog = require('../src/models/AuditLog');
 const { logAudit } = require('../src/middleware/auditLogger');
 const { changeUserRole, listAuditLogs } = require('../src/controllers/admin.controller');
 
-// auth.controller.js pulls in middleware/rateLimit.js, which builds a Redis-backed rate
-// limiter store at module-load time — that constructor issues a command immediately, so the
-// Redis client has to already be (at least) told to connect before this require happens, or
-// it throws "the client is closed". Deferred to a dynamic require inside beforeAll below,
-// after redisClient.connect() — the same ordering server.js relies on, which no other test
-// file needs since none of them require auth.controller.js directly.
 let register;
 let login;
 
@@ -63,9 +57,6 @@ describe('logAudit', () => {
   test('structurally cannot persist a field outside its fixed parameter list', async () => {
     const resourceId = new mongoose.Types.ObjectId();
 
-    // Simulates a careless call site trying to pass secret material through — logAudit's
-    // destructured parameter list has no slot for any of these, so they're dropped before
-    // AuditLog.create() is ever called, not merely "not written by convention".
     await logAudit({
       action: 'test.leak_attempt',
       resourceType: 'Test',
@@ -89,8 +80,6 @@ describe('logAudit', () => {
   });
 
   test('never throws even when the write itself fails', async () => {
-    // resourceId given as an invalid type causes AuditLog.create() to reject with a
-    // CastError — logAudit must swallow it, not propagate it into the caller's request.
     await expect(
       logAudit({ action: 'test.bad_write', resourceType: 'Test', resourceId: 'not-a-valid-object-id' })
     ).resolves.toBeUndefined();

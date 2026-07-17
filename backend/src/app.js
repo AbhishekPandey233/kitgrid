@@ -8,7 +8,6 @@ const { globalLimiter } = require('./middleware/rateLimit');
 const { mongoSanitizeMiddleware } = require('./middleware/sanitize');
 const { requireCsrfToken } = require('./middleware/csrf');
 const { passport } = require('./services/oauthService');
-const { getCsrfToken } = require('./controllers/auth.controller');
 
 const app = express();
 
@@ -46,15 +45,12 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-app.get('/api/csrf-token', getCsrfToken);
-
 app.use('/api/auth', require('./routes/auth.routes'));
 app.use('/api/bookings', require('./routes/booking.routes'));
 app.use('/api/users', require('./routes/user.routes'));
 app.use('/api/admin', require('./routes/admin.routes'));
 app.use('/api/equipment', require('./routes/equipment.routes'));
 
-// Must be registered last — Express recognizes error middleware by its 4-argument signature.
 app.use(errorHandler);
 
 module.exports = app;
