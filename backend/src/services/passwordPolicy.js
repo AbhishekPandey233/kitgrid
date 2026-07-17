@@ -4,13 +4,8 @@ const zxcvbn = require('zxcvbn');
 const MIN_LENGTH = 12;
 const SALT_ROUNDS = 12;
 const HISTORY_LIMIT = 5;
-// zxcvbn scores 0 (too guessable) - 4 (very unguessable). Composition rules alone let
-// through patterns like "Password123!" that are trivially guessable — floor on the
-// estimator's score too, since that's what actually catches those.
 const MIN_STRENGTH_SCORE = 2;
 
-// Small, deliberately short blocklist — not a substitute for zxcvbn's strength scoring,
-// just a fast reject for the most obvious picks.
 const COMMON_PASSWORDS = new Set([
   'password', 'password1', 'password123', '123456', '123456789', 'qwerty',
   'letmein', 'welcome', 'welcome1', 'admin123', 'iloveyou', 'monkey',
@@ -57,7 +52,6 @@ function validate(password, { name = '', email = '' } = {}) {
   return { valid: errors.length === 0, errors, strength };
 }
 
-// Used by change/reset-password flows (Phase 23) to block reuse of recent passwords.
 async function checkReuse(password, passwordHistory = []) {
   for (const oldHash of passwordHistory.slice(0, HISTORY_LIMIT)) {
     if (await bcrypt.compare(password, oldHash)) return true;
