@@ -6,8 +6,13 @@ services:
     # Single-node replica set — required for multi-document transactions (Phase 18's
     # booking overlap/quantity check), which a plain standalone mongod doesn't support.
     command: ["--replSet", "rs0", "--bind_ip_all"]
+    # Host-side port is 27018, not 27017 — there's a native Windows mongod already bound to
+    # 127.0.0.1:27017 on this machine, and "localhost:27017" from a host tool (e.g. Compass)
+    # resolves there instead of into this container, silently landing on the wrong,
+    # unrelated database. The backend is unaffected either way — it talks to Mongo via the
+    # Docker network's internal DNS at mongo:27017, never through this host-side mapping.
     ports:
-      - "27017:27017"
+      - "27018:27017"
     volumes:
       - mongo_data:/data/db
     networks:
