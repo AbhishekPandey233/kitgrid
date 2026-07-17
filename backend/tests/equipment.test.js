@@ -152,17 +152,12 @@ describe('Equipment CRUD (admin)', () => {
     });
 
     test('a NoSQL injection payload in the category filter is neutralized, not thrown', async () => {
-      // Simulates what survives express-mongo-sanitize: a plain string, since the global
-      // middleware already stripped any $-prefixed operator object down before this ever
-      // reaches the controller. The controller's own type check is the second layer.
       const req = { query: { category: { $ne: null } } };
       const res = mockRes();
       const next = jest.fn();
 
       await listEquipment(req, res, next);
 
-      // typeof {} !== 'string', so the controller's own guard drops it entirely rather
-      // than ever handing an operator object to Equipment.find().
       expect(res._status).toBe(200);
       expect(next).not.toHaveBeenCalled();
     });
