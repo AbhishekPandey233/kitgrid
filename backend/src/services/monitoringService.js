@@ -2,12 +2,9 @@ const redisClient = require('../config/redis');
 const SecurityAlert = require('../models/SecurityAlert');
 const logger = require('../utils/logger');
 
-// Distinct from middleware/rateLimit.js's IP tracking (20 fails/10min -> 15min block, which
-// is *enforcement*). This is a lower, faster threshold purely for admin *visibility* — it
-// never blocks anything itself, it just flags a burst for a human to look at.
-const WINDOW_MS = 60 * 1000; // 1 minute
-const ALERT_THRESHOLD = 5; // more than 5 failures within the window
-const ALERT_COOLDOWN_SECONDS = 5 * 60; // don't re-alert the same IP while one's still fresh
+const WINDOW_MS = 60 * 1000;
+const ALERT_THRESHOLD = 5;
+const ALERT_COOLDOWN_SECONDS = 5 * 60;
 
 function windowKey(ip) {
   return `login_fail_window:${ip}`;
@@ -17,10 +14,6 @@ function cooldownKey(ip) {
   return `alert_cooldown:${ip}`;
 }
 
-// A genuine sliding window (a Redis sorted set scored by timestamp, pruned on every call) —
-// not a fixed bucket that resets on a timer. "More than 5 in the last 60 seconds" is always
-// evaluated relative to *now*, so a burst that straddles a bucket boundary can't slip
-// through the way it could with a simple INCR+TTL counter.
 async function recordFailedLoginForAlerting(ip) {
   if (!ip) return;
 
@@ -30,14 +23,11 @@ async function recordFailedLoginForAlerting(ip) {
 
   await redisClient.zAdd(key, { score: now, value: member });
   await redisClient.zRemRangeByScore(key, 0, now - WINDOW_MS);
-  await redisClient.expire(key, Math.ceil((WINDOW_MS / 1000) * 2)); // self-clean once the IP goes quiet
+  await redisClient.expire(key, Math.ceil((WINDOW_MS / 1000) * 2));
 
   const count = await redisClient.zCard(key);
   if (count <= ALERT_THRESHOLD) return;
 
-  // Once the threshold is crossed, every further failure in the same burst would otherwise
-  // raise its own duplicate alert — suppress re-alerting the same IP until the cooldown
-  // lapses or an admin resolves it (see resolveAlert clearing this key too).
   const alreadyAlerted = await redisClient.get(cooldownKey(ip));
   if (alreadyAlerted) return;
 

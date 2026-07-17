@@ -1,7 +1,6 @@
 const { authenticator } = require('otplib');
 const encryptionService = require('./encryptionService');
 
-// Tolerate 1 step (30s) of clock drift either side, standard practice for TOTP.
 authenticator.options = { window: 1 };
 
 function generateSecret() {
