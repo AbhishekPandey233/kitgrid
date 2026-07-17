@@ -3,6 +3,7 @@ const { requireAuth } = require('../middleware/auth');
 const { requireRole } = require('../middleware/rbac');
 const { changeUserRole, listAuditLogs, listAlerts, resolveAlert } = require('../controllers/admin.controller');
 const {
+  listAllBookings,
   approveBooking,
   rejectBooking,
   markActive,
@@ -15,6 +16,7 @@ const requireAdmin = [requireAuth, requireRole('admin')];
 
 router.patch('/users/:id/role', ...requireAdmin, changeUserRole);
 
+router.get('/bookings', ...requireAdmin, listAllBookings);
 router.patch('/bookings/:id/approve', ...requireAdmin, approveBooking);
 router.patch('/bookings/:id/reject', ...requireAdmin, rejectBooking);
 router.patch('/bookings/:id/mark-active', ...requireAdmin, markActive);

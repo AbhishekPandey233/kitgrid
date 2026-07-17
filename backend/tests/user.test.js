@@ -49,11 +49,11 @@ describe('user profile management', () => {
       expect(next).not.toHaveBeenCalled();
 
       const reloaded = await User.findById(user._id).select('+passwordHash');
-      expect(reloaded.role).toBe('customer'); // unchanged, silently ignored
-      expect(reloaded.status).toBe('active'); // unchanged
-      expect(reloaded.mfaEnabled).toBe(false); // unchanged
-      expect(reloaded.passwordHash).toBe('x'); // unchanged
-      expect(reloaded.name).toBe('Still Me'); // the actually-whitelisted field DID update
+      expect(reloaded.role).toBe('customer');
+      expect(reloaded.status).toBe('active');
+      expect(reloaded.mfaEnabled).toBe(false);
+      expect(reloaded.passwordHash).toBe('x');
+      expect(reloaded.name).toBe('Still Me');
     });
 
     test('whitelisted fields (name, phone, notificationPreferences) update correctly', async () => {
@@ -69,7 +69,7 @@ describe('user profile management', () => {
       expect(res._body.user.name).toBe('Updated Name');
       expect(res._body.user.phone).toBe('555-1234');
       expect(res._body.user.notificationPreferences.sms).toBe(true);
-      expect(res._body.user.notificationPreferences.email).toBe(true); // untouched default preserved
+      expect(res._body.user.notificationPreferences.email).toBe(true);
     });
 
     test('an empty name is rejected', async () => {
@@ -157,7 +157,7 @@ describe('user profile management', () => {
       expect(res._body.account.passwordHash).toBeUndefined();
       expect(res._body.account.mfaSecretEncrypted).toBeUndefined();
       expect(res._body.profile.passwordHash).toBeUndefined();
-      expect(res._body.profile.email).toBeUndefined(); // identity info lives under `account`, not `profile`
+      expect(res._body.profile.email).toBeUndefined();
       expect(res._body.bookings).toHaveLength(1);
       expect(res._body.bookings[0].customerNote).toBe('handle with care');
       expect(res._body.bookings[0].adminNote).toBeUndefined();
@@ -169,8 +169,6 @@ describe('user profile management', () => {
       await exportMe(exportReq, exportRes, jest.fn());
       const exportedFile = exportRes._body;
 
-      // Simulate editing a preference in the exported file before re-importing it, the way
-      // a user restoring from an old backup might.
       exportedFile.profile.name = 'Restored From Export';
       exportedFile.profile.notificationPreferences.sms = true;
 

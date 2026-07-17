@@ -10,9 +10,6 @@ const ALLOWED_ROLES = ['customer', 'admin'];
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 100;
 
-// Deliberately separate from user.controller.js's updateMe — this is the ONE place in the
-// whole app that can ever write User.role, admin-only and independently audited, so a role
-// change can never ride along with (or be disguised as) a normal profile self-update.
 async function changeUserRole(req, res, next) {
   try {
     const { role } = req.body || {};
@@ -54,7 +51,6 @@ async function changeUserRole(req, res, next) {
   }
 }
 
-// GET /api/admin/audit-logs — paginated, filterable by action/actor/date range.
 async function listAuditLogs(req, res, next) {
   try {
     const filter = {};
@@ -86,7 +82,8 @@ async function listAuditLogs(req, res, next) {
       AuditLog.find(filter)
         .sort({ timestamp: -1 })
         .skip((page - 1) * limit)
-        .limit(limit),
+        .limit(limit)
+        .populate('actorId', 'name email'),
       AuditLog.countDocuments(filter),
     ]);
 
@@ -99,7 +96,6 @@ async function listAuditLogs(req, res, next) {
   }
 }
 
-// GET /api/admin/alerts — paginated, filterable by resolved status.
 async function listAlerts(req, res, next) {
   try {
     const filter = {};
@@ -127,7 +123,6 @@ async function listAlerts(req, res, next) {
   }
 }
 
-// PATCH /api/admin/alerts/:id/resolve
 async function resolveAlert(req, res, next) {
   try {
     const alert = await SecurityAlert.findById(req.params.id);
@@ -138,10 +133,6 @@ async function resolveAlert(req, res, next) {
     alert.resolved = true;
     await alert.save();
 
-    // Best-effort: lets the same IP raise a fresh alert immediately if the behavior
-    // continues, rather than staying suppressed for the rest of the cooldown window after
-    // an admin has already acted on it. Must never block the actual "mark resolved" write
-    // above if Redis happens to be unreachable.
     try {
       await monitoringService.clearAlertCooldown(alert.ip);
     } catch (err) {
