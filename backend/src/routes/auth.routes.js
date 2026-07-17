@@ -15,6 +15,13 @@ const {
   forgotPassword,
   resetPassword,
   getDebugEmails,
+  webauthnRegisterOptions,
+  webauthnRegisterVerify,
+  webauthnLoginOptions,
+  webauthnLoginVerify,
+  getCurrentUser,
+  checkPasswordStrength,
+  getCsrfToken,
 } = require('../controllers/auth.controller');
 const { strictAuthLimiter } = require('../middleware/rateLimit');
 const { requireAuth } = require('../middleware/auth');
@@ -23,10 +30,15 @@ const { passport, requireOAuthConfigured } = require('../services/oauthService')
 
 const router = express.Router();
 
+router.post('/password-strength', checkPasswordStrength);
+
 router.post('/register', strictAuthLimiter, requireCaptcha, register);
 router.post('/login', strictAuthLimiter, requireCaptcha, login);
 router.post('/refresh', refresh);
 router.post('/logout', logout);
+router.get('/me', requireAuth, getCurrentUser);
+
+router.get('/csrf-token', getCsrfToken);
 
 router.post('/mfa/setup', requireAuth, mfaSetup);
 router.post('/mfa/verify-setup', strictAuthLimiter, requireAuth, mfaVerifySetup);
@@ -36,8 +48,12 @@ router.post('/forgot-password', strictAuthLimiter, forgotPassword);
 router.post('/reset-password/:token', strictAuthLimiter, resetPassword);
 router.get('/debug/last-emails', getDebugEmails);
 
-// Listing is a read-only, idempotent lookup, so GET rather than POST — the more
-// conventional REST verb for "list my own sessions".
+router.post('/webauthn/register-options', requireAuth, webauthnRegisterOptions);
+router.post('/webauthn/register-verify', strictAuthLimiter, requireAuth, webauthnRegisterVerify);
+
+router.post('/webauthn/login-options', strictAuthLimiter, webauthnLoginOptions);
+router.post('/webauthn/login-verify', strictAuthLimiter, webauthnLoginVerify);
+
 router.get('/sessions', requireAuth, listSessionsForUser);
 router.delete('/sessions/:id', requireAuth, revokeSessionForUser);
 
@@ -56,8 +72,6 @@ router.get(
   googleLoginCallback
 );
 
-// Authenticated-only: lets an already-logged-in user attach a Google identity to their
-// existing account, separate from the plain login path above.
 router.get(
   '/google/link',
   requireOAuthConfigured,

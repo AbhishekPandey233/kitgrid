@@ -1,9 +1,11 @@
 const QRCode = require('qrcode');
+const webauthn = require('@simplewebauthn/server');
 const env = require('../config/env');
 const User = require('../models/User');
 const passwordPolicy = require('../services/passwordPolicy');
 const tokenService = require('../services/tokenService');
 const mfaService = require('../services/mfaService');
+const webauthnService = require('../services/webauthnService');
 const rateLimitHelpers = require('../middleware/rateLimit');
 const { logAudit } = require('../middleware/auditLogger');
 const monitoringService = require('../services/monitoringService');
@@ -12,19 +14,13 @@ const logger = require('../utils/logger');
 
 const FAILED_ATTEMPTS_LOCKOUT_THRESHOLD = 12;
 const BASE_LOCKOUT_MS = 15 * 60 * 1000;
-const MAX_LOCKOUT_MS = 24 * 60 * 60 * 1000; // cap runaway exponential growth at 24h
+const MAX_LOCKOUT_MS = 24 * 60 * 60 * 1000;
 const PASSWORD_EXPIRY_MS = env.passwordExpiryDays * 24 * 60 * 60 * 1000;
 
 function computeLockoutDurationMs(priorLockoutCount) {
   return Math.min(BASE_LOCKOUT_MS * 2 ** priorLockoutCount, MAX_LOCKOUT_MS);
 }
 
-// Generic failure for login: same status/message whether the account doesn't exist, has
-// no password (OAuth-only), is currently locked out, or the password is simply wrong —
-// none of those should be distinguishable to the caller. Also feeds IP-level tracking
-// (independent of whether the target account exists at all) and the audit trail — userId
-// is only known when the attempt matched a real account (wrong password, locked account),
-// not when the email itself didn't match anything.
 async function failLogin(res, req, userId) {
   await rateLimitHelpers.recordFailedLoginFromIp(req.ip);
   await monitoringService.recordFailedLoginForAlerting(req.ip);
@@ -39,26 +35,28 @@ async function failLogin(res, req, userId) {
   return res.status(401).json({ error: 'Invalid email or password' });
 }
 
-// Device fingerprint for the optional device-binding feature (env.deviceBindingEnabled) —
-// hashes the User-Agent header together with a stable, client-generated device id sent as
-// X-Device-Id. Neither value is trusted on its own; the fingerprint is just a compensating
-// signal recorded at login and re-checked on refresh, not an identity claim.
 function getDeviceMeta(req) {
   const userAgent = req.headers['user-agent'] || '';
   const deviceId = req.headers['x-device-id'] || '';
   return { userAgent, fingerprint: tokenService.computeFingerprint(userAgent, deviceId) };
 }
 
+function clearLegacyScopedRefreshCookie(res) {
+  res.cookie('refresh_token', '', {
+    ...tokenService.refreshCookieOptions,
+    path: '/api/auth',
+    maxAge: 0,
+    expires: new Date(0),
+  });
+}
+
 function setAuthCookies(res, { accessToken, refreshToken }) {
   res.cookie('access_token', accessToken, tokenService.accessCookieOptions);
   res.cookie('refresh_token', refreshToken, tokenService.refreshCookieOptions);
+  clearLegacyScopedRefreshCookie(res);
 }
 
 function clearAuthCookies(res) {
-  // res.clearCookie(name, options) merges `options` on top of Express's own past-date
-  // default — since our cookie options carry a positive maxAge, that merge leaves the
-  // Max-Age attribute intact (a positive Max-Age wins over Expires per RFC 6265), so the
-  // cookie would NOT actually be cleared in a real browser. Force maxAge/expires directly.
   res.cookie('access_token', '', {
     ...tokenService.accessCookieOptions,
     maxAge: 0,
@@ -69,6 +67,13 @@ function clearAuthCookies(res) {
     maxAge: 0,
     expires: new Date(0),
   });
+  clearLegacyScopedRefreshCookie(res);
+}
+
+async function checkPasswordStrength(req, res) {
+  const { password, name, email } = req.body || {};
+  const result = passwordPolicy.validate(password || '', { name, email });
+  return res.status(200).json(result);
 }
 
 async function register(req, res, next) {
@@ -118,7 +123,6 @@ async function register(req, res, next) {
       userAgent: req.headers['user-agent'],
     });
 
-    // 201, no sensitive data (passwordHash, etc.) echoed back — login/session comes in Phase 5.
     return res.status(201).json({
       message: 'Registration successful',
       strength,
@@ -137,7 +141,6 @@ async function login(req, res, next) {
 
     const ip = req.ip;
 
-    // Fail fast on an already-blocked IP without touching Mongo or the password hash.
     if (await rateLimitHelpers.isIpBlocked(ip)) {
       return res.status(429).json({ error: 'Too many attempts, please try again later' });
     }
@@ -149,8 +152,6 @@ async function login(req, res, next) {
       return await failLogin(res, req);
     }
 
-    // Locked accounts are rejected before ever comparing the password — same generic
-    // response as "wrong password", so a caller can't tell lockout apart from a bad guess.
     if (user.lockoutUntil && user.lockoutUntil > new Date()) {
       return await failLogin(res, req, user._id);
     }
@@ -191,14 +192,10 @@ async function login(req, res, next) {
       return res.status(403).json({ error: 'Account is suspended' });
     }
 
-    // Password verified — clear brute-force state regardless of what happens next (expiry
-    // rejection, MFA, or straight through to a session).
     user.failedLoginAttempts = 0;
     user.lockoutCount = 0;
     user.lockoutUntil = undefined;
 
-    // Password expiry — checked right after password verification, before MFA: an expired
-    // password needs resetting regardless of MFA status, so there's no point continuing.
     if (user.passwordChangedAt && Date.now() - user.passwordChangedAt.getTime() > PASSWORD_EXPIRY_MS) {
       await user.save();
       logger.info('Login rejected: password expired', { userId: user._id.toString() });
@@ -212,7 +209,6 @@ async function login(req, res, next) {
       await user.save();
       const mfaPendingToken = tokenService.signMfaPendingToken(user);
       logger.info('Password verified, awaiting MFA challenge', { userId: user._id.toString() });
-      // No cookies yet — this token only proves "password was correct", not a session.
       return res.status(200).json({ mfaRequired: true, mfaPendingToken });
     }
 
@@ -234,7 +230,7 @@ async function login(req, res, next) {
     });
 
     return res.status(200).json({
-      user: { id: user._id, name: user.name, email: user.email, role: user.role },
+      user: { id: user._id, name: user.name, email: user.email, role: user.role, mfaEnabled: user.mfaEnabled },
     });
   } catch (err) {
     next(err);
@@ -248,16 +244,12 @@ async function mfaSetup(req, res, next) {
     const otpauthUrl = mfaService.buildOtpAuthUrl(secret, user.email);
     const qrCode = await QRCode.toDataURL(otpauthUrl);
 
-    // Stored but inert until verify-setup confirms the user actually has a working
-    // authenticator — mfaEnabled stays false, so login isn't affected mid-enrollment.
     user.mfaSecretEncrypted = mfaService.encryptSecret(secret);
     user.mfaEnabled = false;
     await user.save();
 
     logger.info('MFA setup initiated', { userId: user._id.toString() });
 
-    // `secret` is shown once, in plaintext, for manual entry as a QR-scan fallback — same
-    // as every standard TOTP setup flow. It's never returned again after this response.
     return res.status(200).json({ qrCode, secret, otpauthUrl });
   } catch (err) {
     next(err);
@@ -332,15 +324,13 @@ async function mfaChallenge(req, res, next) {
     await logAudit({ ...auditBase, action: 'auth.mfa_challenge_success', actorId: user._id, resourceId: user._id });
 
     return res.status(200).json({
-      user: { id: user._id, name: user.name, email: user.email, role: user.role },
+      user: { id: user._id, name: user.name, email: user.email, role: user.role, mfaEnabled: user.mfaEnabled },
     });
   } catch (err) {
     next(err);
   }
 }
 
-// POST /api/auth/forgot-password — always the same generic response regardless of whether
-// the account exists, so this endpoint can never be used to enumerate registered emails.
 async function forgotPassword(req, res, next) {
   try {
     const { email } = req.body || {};
@@ -361,9 +351,6 @@ async function forgotPassword(req, res, next) {
       try {
         await emailService.sendPasswordResetEmail(user.email, resetUrl);
       } catch (err) {
-        // Sending failed (e.g. Ethereal hiccup) — still return the generic response either
-        // way; don't let email delivery status leak whether the account exists, and the
-        // user can just request again.
         logger.error('Failed to send password reset email', { userId: user._id.toString(), error: err.message });
       }
 
@@ -383,7 +370,6 @@ async function forgotPassword(req, res, next) {
   }
 }
 
-// POST /api/auth/reset-password/:token
 async function resetPassword(req, res, next) {
   try {
     const { token } = req.params;
@@ -422,15 +408,11 @@ async function resetPassword(req, res, next) {
     user.passwordHash = passwordHash;
     user.passwordHistory = passwordPolicy.addToHistory(user.passwordHistory, passwordHash);
     user.passwordChangedAt = new Date();
-    // A successful reset is a strong signal of legitimate access recovery — clear any
-    // brute-force state too, same as a successful login would.
     user.failedLoginAttempts = 0;
     user.lockoutCount = 0;
     user.lockoutUntil = undefined;
     await user.save();
 
-    // Force every existing session to re-authenticate — a password reset invalidates ALL
-    // prior sessions/devices, not just the one that requested it.
     await tokenService.revokeAllSessions(user._id.toString());
     await tokenService.consumePasswordResetToken(token);
 
@@ -450,9 +432,6 @@ async function resetPassword(req, res, next) {
   }
 }
 
-// GET /api/auth/debug/last-emails — dev/demo convenience only, so the Ethereal reset link
-// can actually be seen and clicked (Ethereal never delivers to a real inbox). Never
-// available in production: exposing this there would let anyone read any reset link.
 async function getDebugEmails(req, res) {
   if (env.nodeEnv === 'production') {
     return res.status(404).end();
@@ -460,11 +439,194 @@ async function getDebugEmails(req, res) {
   return res.status(200).json({ emails: emailService.getRecentPreviews() });
 }
 
+async function webauthnRegisterOptions(req, res, next) {
+  try {
+    const user = await User.findById(req.user._id).select('+webauthnCredentials');
+
+    const options = await webauthn.generateRegistrationOptions({
+      rpName: webauthnService.RP_NAME,
+      rpID: webauthnService.RP_ID,
+      userName: user.email,
+      userDisplayName: user.name,
+      attestationType: 'none',
+      excludeCredentials: user.webauthnCredentials.map(webauthnService.credentialToDescriptor),
+      authenticatorSelection: { residentKey: 'preferred', userVerification: 'preferred' },
+    });
+
+    await tokenService.issueWebauthnChallenge('register', user._id.toString(), options.challenge);
+
+    return res.status(200).json(options);
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function webauthnRegisterVerify(req, res, next) {
+  try {
+    const { response, deviceLabel } = req.body || {};
+    if (!response) {
+      return res.status(400).json({ error: 'response is required' });
+    }
+
+    const expectedChallenge = await tokenService.consumeWebauthnChallenge('register', req.user._id.toString());
+    if (!expectedChallenge) {
+      return res.status(400).json({ error: 'Registration ceremony expired or was never started' });
+    }
+
+    let verification;
+    try {
+      verification = await webauthn.verifyRegistrationResponse({
+        response,
+        expectedChallenge,
+        expectedOrigin: webauthnService.ORIGIN,
+        expectedRPID: webauthnService.RP_ID,
+      });
+    } catch (err) {
+      return res.status(400).json({ error: 'Registration verification failed' });
+    }
+
+    if (!verification.verified || !verification.registrationInfo) {
+      return res.status(400).json({ error: 'Registration verification failed' });
+    }
+
+    const { credential } = verification.registrationInfo;
+    const user = await User.findById(req.user._id).select('+webauthnCredentials');
+
+    if (user.webauthnCredentials.some((c) => c.credentialID === credential.id)) {
+      return res.status(409).json({ error: 'This authenticator is already registered' });
+    }
+
+    user.webauthnCredentials.push({
+      ...webauthnService.toStoredCredential(credential),
+      transports: credential.transports || [],
+      deviceLabel: deviceLabel ? String(deviceLabel).slice(0, 100) : 'Passkey',
+    });
+    await user.save();
+
+    logger.info('WebAuthn credential registered', { userId: user._id.toString() });
+    await logAudit({
+      actorId: user._id,
+      action: 'auth.webauthn_registered',
+      resourceType: 'User',
+      resourceId: user._id,
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+
+    return res.status(200).json({ message: 'Authenticator registered' });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function webauthnLoginOptions(req, res, next) {
+  try {
+    const { email } = req.body || {};
+    if (!email) {
+      return res.status(400).json({ error: 'email is required' });
+    }
+
+    const normalizedEmail = String(email).trim().toLowerCase();
+    const user = await User.findOne({ email: normalizedEmail }).select('+webauthnCredentials');
+
+    if (!user || user.webauthnCredentials.length === 0) {
+      return res.status(400).json({ error: 'No passkeys registered for this account' });
+    }
+
+    const options = await webauthn.generateAuthenticationOptions({
+      rpID: webauthnService.RP_ID,
+      allowCredentials: user.webauthnCredentials.map(webauthnService.credentialToDescriptor),
+      userVerification: 'preferred',
+    });
+
+    await tokenService.issueWebauthnChallenge('login', user._id.toString(), options.challenge);
+
+    return res.status(200).json(options);
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function webauthnLoginVerify(req, res, next) {
+  try {
+    const { email, response } = req.body || {};
+    if (!email || !response) {
+      return res.status(400).json({ error: 'email and response are required' });
+    }
+
+    const normalizedEmail = String(email).trim().toLowerCase();
+    const user = await User.findOne({ email: normalizedEmail }).select('+webauthnCredentials');
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid passkey login' });
+    }
+
+    if (user.status === 'suspended') {
+      return res.status(403).json({ error: 'Account is suspended' });
+    }
+
+    const expectedChallenge = await tokenService.consumeWebauthnChallenge('login', user._id.toString());
+    if (!expectedChallenge) {
+      return res.status(400).json({ error: 'Login ceremony expired or was never started' });
+    }
+
+    const stored = user.webauthnCredentials.find((c) => c.credentialID === response.id);
+    if (!stored) {
+      return res.status(401).json({ error: 'Invalid passkey login' });
+    }
+
+    let verification;
+    try {
+      verification = await webauthn.verifyAuthenticationResponse({
+        response,
+        expectedChallenge,
+        expectedOrigin: webauthnService.ORIGIN,
+        expectedRPID: webauthnService.RP_ID,
+        credential: webauthnService.toLibraryCredential(stored),
+      });
+    } catch (err) {
+      return res.status(401).json({ error: 'Invalid passkey login' });
+    }
+
+    if (!verification.verified) {
+      return res.status(401).json({ error: 'Invalid passkey login' });
+    }
+
+    stored.counter = verification.authenticationInfo.newCounter;
+
+    if (user.mfaEnabled) {
+      await user.save();
+      const mfaPendingToken = tokenService.signMfaPendingToken(user);
+      logger.info('Passkey verified, awaiting MFA challenge', { userId: user._id.toString() });
+      return res.status(200).json({ mfaRequired: true, mfaPendingToken });
+    }
+
+    user.lastLogin = new Date();
+    const { accessToken, refreshToken } = await tokenService.issueSession(user, getDeviceMeta(req));
+    setAuthCookies(res, { accessToken, refreshToken });
+    await user.save();
+
+    logger.info('User logged in via passkey', { userId: user._id.toString() });
+    await logAudit({
+      actorId: user._id,
+      action: 'auth.webauthn_login_success',
+      resourceType: 'User',
+      resourceId: user._id,
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+
+    return res.status(200).json({
+      user: { id: user._id, name: user.name, email: user.email, role: user.role, mfaEnabled: user.mfaEnabled },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 function googleProfileEmail(profile) {
   return profile.emails?.[0]?.value?.toLowerCase() || null;
 }
 
-// GET /api/auth/google/callback — plain "log in with Google".
 async function googleLoginCallback(req, res, next) {
   try {
     const profile = req.user;
@@ -481,11 +643,6 @@ async function googleLoginCallback(req, res, next) {
     });
 
     if (!user) {
-      // No OAuth-linked account yet — but if a local (password) account already exists
-      // with this email, do NOT auto-link. We have no email-verification flow, so trusting
-      // "same email = same person" here would let anyone who merely knows a victim's email
-      // take over their account via Google sign-in. Direct them to log in with their
-      // password first and link Google from an authenticated "Connect Google" action instead.
       const existingLocal = await User.findOne({ email });
       if (existingLocal) {
         return res.redirect(`${env.frontendOrigin}/login?oauth=email_exists`);
@@ -516,11 +673,6 @@ async function googleLoginCallback(req, res, next) {
   }
 }
 
-// GET /api/auth/google/link/callback — "Connect Google" from an already-logged-in user's
-// profile settings. The initiating route (/google/link) requires auth before it will even
-// redirect to Google; this callback independently re-verifies the access_token cookie
-// (which survives the redirect round-trip, since it's a same-site navigation) rather than
-// trusting anything client-supplied about which account to attach the Google identity to.
 async function googleLinkCallback(req, res, next) {
   try {
     const accessTokenCookie = req.cookies?.access_token;
@@ -591,10 +743,6 @@ async function refresh(req, res, next) {
 
     const rotated = await tokenService.rotateSession({ userId, sessionId, jti }, user, getDeviceMeta(req));
     if (!rotated) {
-      // Reuse of an already-rotated refresh token, an unknown/expired session, or (if
-      // device binding is enabled) a device-fingerprint mismatch — the whole family was
-      // just revoked inside rotateSession(). Same generic response either way, so a caller
-      // can't tell which of those actually happened. Force re-login.
       clearAuthCookies(res);
       logger.warn('Refresh rejected: reuse, invalid session, or device mismatch', { userId, sessionId });
       return res.status(401).json({ error: 'Session expired, please log in again' });
@@ -607,6 +755,13 @@ async function refresh(req, res, next) {
   }
 }
 
+async function getCurrentUser(req, res) {
+  const user = req.user;
+  return res.status(200).json({
+    user: { id: user._id, name: user.name, email: user.email, role: user.role, mfaEnabled: user.mfaEnabled },
+  });
+}
+
 function getCurrentSessionId(req) {
   const token = req.cookies?.refresh_token;
   if (!token) return null;
@@ -617,11 +772,10 @@ function getCurrentSessionId(req) {
   }
 }
 
-// GET /api/csrf-token — bound to the refresh session, not the access token, since a user
-// whose access token just expired (but whose refresh session is still valid) should still
-// be able to fetch one without a round trip through /refresh first.
 async function getCsrfToken(req, res, next) {
   try {
+    res.setHeader('Cache-Control', 'no-store');
+
     const sessionId = getCurrentSessionId(req);
     if (!sessionId) {
       return res.status(401).json({ error: 'No active session' });
@@ -649,9 +803,6 @@ async function listSessionsForUser(req, res, next) {
 
 async function revokeSessionForUser(req, res, next) {
   try {
-    // No separate ownership check needed: the Redis key is session:{req.user._id}:{id},
-    // so this can never touch another user's session regardless of what :id is supplied —
-    // deleting a key under someone else's prefix isn't reachable from here at all.
     await tokenService.revokeSession(req.user._id.toString(), req.params.id);
     return res.status(200).json({ message: 'Session revoked' });
   } catch (err) {
@@ -667,7 +818,6 @@ async function logout(req, res, next) {
         const { sub: userId, sid: sessionId } = tokenService.verifyRefreshToken(token);
         await tokenService.revokeSession(userId, sessionId);
       } catch (err) {
-        // Token already invalid/expired — nothing to revoke, just clear cookies below.
       }
     }
     clearAuthCookies(res);
@@ -693,4 +843,10 @@ module.exports = {
   forgotPassword,
   resetPassword,
   getDebugEmails,
+  webauthnRegisterOptions,
+  webauthnRegisterVerify,
+  webauthnLoginOptions,
+  webauthnLoginVerify,
+  getCurrentUser,
+  checkPasswordStrength,
 };

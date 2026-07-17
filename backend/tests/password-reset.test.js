@@ -5,9 +5,6 @@ const User = require('../src/models/User');
 const passwordPolicy = require('../src/services/passwordPolicy');
 const tokenService = require('../src/services/tokenService');
 
-// auth.controller.js pulls in middleware/rateLimit.js, which builds a Redis-backed store at
-// module-load time — Redis has to be connected first (see tests/audit.test.js for the same
-// pattern, and Phase 6/20's write-ups for why).
 let forgotPassword;
 let resetPassword;
 let login;
@@ -22,9 +19,6 @@ function mockRes() {
 
 const GOOD_PASSWORD = 'Tr0ub4dor&Zebra!';
 
-// Tests that exercise forgotPassword make a real network call to Ethereal (email send,
-// sometimes also test-account creation) — default 5000ms is too tight once the full suite
-// runs multiple files concurrently and those calls queue up behind each other.
 jest.setTimeout(20000);
 
 describe('password reset + expiry', () => {
@@ -77,9 +71,6 @@ describe('password reset + expiry', () => {
       const res = mockRes();
       await forgotPassword(req, res, jest.fn());
 
-      // We don't have the raw token (it only ever left via the emailed link), but we can
-      // confirm the underlying Redis-backed mechanism actually issued one for this user by
-      // minting our own via the same primitive and checking it resolves correctly.
       const rawToken = await tokenService.issuePasswordResetToken(user._id.toString());
       const resolvedUserId = await tokenService.verifyPasswordResetToken(rawToken);
       expect(resolvedUserId).toBe(user._id.toString());
@@ -119,7 +110,6 @@ describe('password reset + expiry', () => {
 
       expect(res._status).toBe(400);
 
-      // The token must still be usable — a policy-validation failure shouldn't burn it.
       const stillValid = await tokenService.verifyPasswordResetToken(rawToken);
       expect(stillValid).toBe(user._id.toString());
     });
