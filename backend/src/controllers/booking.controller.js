@@ -1,5 +1,3 @@
-// Single-resource booking actions (get/update/delete own booking), creation, the admin
-// lifecycle state machine, and the customer-only cancel endpoint.
 
 const mongoose = require('mongoose');
 const { z } = require('zod');
@@ -9,13 +7,6 @@ const HttpError = require('../utils/HttpError');
 const { pick } = require('../utils/pick');
 const { logAudit } = require('../middleware/auditLogger');
 
-// Bookings that still consume capacity. Deliberately broader than just "approved/active":
-// nothing in this system re-checks capacity at approval time (Phase 19's approve endpoint
-// is a plain status transition), so if a merely-*pending* request didn't also count here,
-// an admin could approve more overlapping requests than the equipment actually has —
-// pending has to hold a tentative claim on inventory for the "no overselling" guarantee to
-// actually mean anything end to end. Terminal/inert states (rejected, cancelled, no_show,
-// returned) release the hold.
 const BLOCKING_STATUSES = ['pending', 'approved', 'active'];
 
 const dateSchema = z.coerce
@@ -36,6 +27,57 @@ function formatZodError(error) {
   return error.issues.map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`);
 }
 
+const MY_BOOKINGS_LIMIT = 50;
+
+const ADMIN_LIST_DEFAULT_PAGE_SIZE = 20;
+const ADMIN_LIST_MAX_PAGE_SIZE = 100;
+const BOOKING_STATUS_VALUES = Booking.schema.path('status').enumValues;
+
+async function listAllBookings(req, res, next) {
+  try {
+    const filter = {};
+    if (typeof req.query.status === 'string' && BOOKING_STATUS_VALUES.includes(req.query.status)) {
+      filter.status = req.query.status;
+    }
+
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.min(
+      Math.max(parseInt(req.query.limit, 10) || ADMIN_LIST_DEFAULT_PAGE_SIZE, 1),
+      ADMIN_LIST_MAX_PAGE_SIZE
+    );
+
+    const [bookings, total] = await Promise.all([
+      Booking.find(filter)
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .populate('equipmentId', 'name category')
+        .populate('customerId', 'name email'),
+      Booking.countDocuments(filter),
+    ]);
+
+    return res.status(200).json({
+      bookings,
+      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function listMyBookings(req, res, next) {
+  try {
+    const bookings = await Booking.find({ customerId: req.user._id })
+      .sort({ createdAt: -1 })
+      .limit(MY_BOOKINGS_LIMIT)
+      .populate('equipmentId', 'name category');
+
+    return res.status(200).json({ bookings });
+  } catch (err) {
+    next(err);
+  }
+}
+
 async function getBooking(req, res) {
   return res.status(200).json({ booking: req.resource });
 }
@@ -47,8 +89,6 @@ async function updateBooking(req, res, next) {
       return res.status(400).json({ error: 'Nothing to update' });
     }
 
-    // Explicit whitelist: status changes only ever happen through dedicated admin/cancel
-    // endpoints (Phase 19), never through this general update route.
     req.resource.customerNote = customerNote;
     await req.resource.save();
 
@@ -67,21 +107,6 @@ async function deleteBooking(req, res, next) {
   }
 }
 
-// POST /api/bookings — customer creates a booking request (starts 'pending').
-//
-// Safe under concurrency: the overlap check and the insert run inside one MongoDB
-// transaction, but that alone isn't sufficient — two concurrent transactions inserting two
-// *different* new Booking documents don't naturally conflict with each other under
-// MongoDB's document-level write-conflict detection, even though both computed their
-// "is there capacity" answer from the same (stale, as of the loser's read) overlap count.
-// That's classic write skew: both transactions can see "0 conflicting bookings" and both
-// commit, overselling the last unit. To prevent it, the transaction's first write is an
-// increment on Equipment.reservationVersion — a field with no meaning of its own, whose
-// only job is to make every concurrent booking attempt for the same equipment contend over
-// the same document. Whichever transaction loses that race gets a transient write-conflict
-// error, which the driver's withTransaction() catches and retries automatically — the retry
-// re-reads the overlap count fresh (now including the winner's just-committed booking) and
-// correctly finds there's no capacity left.
 async function createBooking(req, res, next) {
   try {
     const parsed = createBookingSchema.safeParse(req.body);
@@ -109,8 +134,6 @@ async function createBooking(req, res, next) {
 
     try {
       await session.withTransaction(async () => {
-        // Atomic fetch + version bump in one op — this is the contention point described
-        // above. Must happen before the overlap read below so a retry re-reads fresh data.
         const equipment = await Equipment.findOneAndUpdate(
           { _id: equipmentId, status: 'active' },
           { $inc: { reservationVersion: 1 } },
@@ -169,10 +192,6 @@ async function createBooking(req, res, next) {
   }
 }
 
-// Customer-only cancellation — deliberately a separate endpoint from updateBooking above,
-// restricted to 'pending' bookings only. Once a booking is approved, cancelling it needs
-// admin coordination (the equipment may already be set aside), so this intentionally
-// doesn't extend to any other status.
 async function cancelBooking(req, res, next) {
   try {
     if (req.resource.status !== 'pending') {
@@ -199,21 +218,6 @@ async function cancelBooking(req, res, next) {
   }
 }
 
-// Admin lifecycle state machine. Each named transition is only legal from one specific
-// starting status:
-//   approve:      pending  -> approved
-//   reject:       pending  -> rejected
-//   markActive:   approved -> active      (pickup)
-//   markNoShow:   approved -> no_show     (never picked up)
-//   markReturned: active   -> returned
-// Anything else (e.g. mark-returned on a booking that was never active, or approving an
-// already-approved booking) is rejected with 409 rather than silently no-op'd or coerced —
-// the state machine's whole point is that Booking.status can't be jumped to an arbitrary
-// value, only walked one defined edge at a time. decidedBy/decidedAt are stamped on every
-// transition below (not just approve/reject) so there's always a record of which admin last
-// acted on a booking. Audit logging is wired into approve/reject specifically (per Phase
-// 20's spec — "booking creation/approval/rejection/cancellation"); mark-active/no-show/
-// returned aren't in that list.
 function makeTransitionHandler(from, to, { extraFields = [], auditAction } = {}) {
   return async function transition(req, res, next) {
     try {
@@ -265,6 +269,8 @@ const markNoShow = makeTransitionHandler('approved', 'no_show');
 const markReturned = makeTransitionHandler('active', 'returned', { extraFields: ['conditionOnReturn'] });
 
 module.exports = {
+  listMyBookings,
+  listAllBookings,
   getBooking,
   updateBooking,
   deleteBooking,

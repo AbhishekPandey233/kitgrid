@@ -3,6 +3,7 @@ const Booking = require('../models/Booking');
 const { requireAuth } = require('../middleware/auth');
 const { requireOwnership } = require('../middleware/ownership');
 const {
+  listMyBookings,
   getBooking,
   updateBooking,
   deleteBooking,
@@ -14,6 +15,7 @@ const router = express.Router();
 
 const ownBooking = requireOwnership(Booking, 'id', 'customerId');
 
+router.get('/', requireAuth, listMyBookings);
 router.post('/', requireAuth, createBooking);
 router.get('/:id', requireAuth, ownBooking, getBooking);
 router.patch('/:id', requireAuth, ownBooking, updateBooking);
