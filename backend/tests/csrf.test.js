@@ -91,8 +91,8 @@ describe('requireCsrfToken', () => {
     const req = {
       method: 'PATCH',
       path: '/api/bookings/123',
-      cookies: { refresh_token: refreshCookieB }, // session B's cookie
-      headers: { 'x-csrf-token': csrfTokenA }, // session A's token
+      cookies: { refresh_token: refreshCookieB },
+      headers: { 'x-csrf-token': csrfTokenA },
     };
     const res = mockRes();
     const next = jest.fn();

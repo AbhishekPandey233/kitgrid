@@ -93,7 +93,6 @@ describe('sanitize on write (Mongoose schema setters)', () => {
     expect(booking.customerNote).not.toContain('alert(1)');
     expect(booking.customerNote).toContain('Please handle with care');
 
-    // Confirm it's clean in the DB itself, not just on the in-memory document.
     const reloaded = await Booking.findById(booking._id);
     expect(reloaded.customerNote).not.toContain('<script>');
 

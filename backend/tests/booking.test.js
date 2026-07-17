@@ -179,9 +179,6 @@ describe('POST /api/bookings', () => {
       const resA = mockRes();
       const resB = mockRes();
 
-      // Fired together via Promise.all so both hit the DB genuinely concurrently, not
-      // sequentially — this is what actually exercises the transaction/retry machinery
-      // rather than trivially passing because one request finished before the other began.
       await Promise.all([
         createBooking(reqA, resA, (err) => { throw err; }),
         createBooking(reqB, resB, (err) => { throw err; }),
@@ -373,8 +370,8 @@ describe('Booking lifecycle (admin state machine + customer cancel)', () => {
       expect(next).not.toHaveBeenCalled();
 
       const reloaded = await Booking.findById(booking._id);
-      expect(reloaded.status).toBe('pending'); // unchanged — silently ignored
-      expect(reloaded.customerNote).toBe('still mine'); // the actually-whitelisted field DID update
+      expect(reloaded.status).toBe('pending');
+      expect(reloaded.customerNote).toBe('still mine');
     });
   });
 });

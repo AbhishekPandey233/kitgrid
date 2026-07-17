@@ -3,9 +3,6 @@ const env = require('../src/config/env');
 const redisClient = require('../src/config/redis');
 const User = require('../src/models/User');
 
-// generateRegistrationOptions/generateAuthenticationOptions run for real (they're pure
-// challenge/options generation, no hardware involved) — only the two verify* functions need
-// mocking, since a real authenticator ceremony can't be driven from Jest.
 jest.mock('@simplewebauthn/server', () => {
   const actual = jest.requireActual('@simplewebauthn/server');
   return { ...actual, verifyRegistrationResponse: jest.fn(), verifyAuthenticationResponse: jest.fn() };
