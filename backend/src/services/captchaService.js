@@ -22,8 +22,6 @@ async function verifyCaptcha(token, remoteIp) {
   return Boolean(data.success);
 }
 
-// Applied as middleware on POST /api/auth/register and /login. Skipped only in
-// NODE_ENV=test so automated tests aren't blocked on an external network call.
 async function requireCaptcha(req, res, next) {
   if (env.nodeEnv === 'test') {
     return next();
