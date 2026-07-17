@@ -10,6 +10,18 @@ const oauthProviderSchema = new Schema(
   { _id: false }
 );
 
+const webauthnCredentialSchema = new Schema(
+  {
+    credentialID: { type: String, required: true },
+    publicKey: { type: String, required: true },
+    counter: { type: Number, required: true, default: 0 },
+    transports: { type: [String], default: [] },
+    deviceLabel: { type: String, default: 'Passkey', trim: true },
+    createdAt: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
+
 const userSchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
@@ -20,7 +32,6 @@ const userSchema = new Schema(
       lowercase: true,
       trim: true,
     },
-    // Absent for OAuth-only accounts. select:false keeps it out of default query results.
     passwordHash: { type: String, select: false },
     passwordHistory: { type: [String], default: [], select: false },
     passwordChangedAt: { type: Date },
@@ -28,10 +39,9 @@ const userSchema = new Schema(
     mfaEnabled: { type: Boolean, default: false },
     mfaSecretEncrypted: { type: String, select: false },
     oauthProviders: { type: [oauthProviderSchema], default: [] },
+    webauthnCredentials: { type: [webauthnCredentialSchema], default: [], select: false },
     failedLoginAttempts: { type: Number, default: 0 },
     lockoutUntil: { type: Date },
-    // Number of times this account has been locked out consecutively (reset to 0 on a
-    // successful login) — drives exponential backoff on the lockout duration.
     lockoutCount: { type: Number, default: 0 },
     status: { type: String, enum: ['active', 'suspended'], default: 'active' },
     lastLogin: { type: Date },
