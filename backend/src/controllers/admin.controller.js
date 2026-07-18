@@ -5,6 +5,7 @@ const SecurityAlert = require('../models/SecurityAlert');
 const { logAudit } = require('../middleware/auditLogger');
 const monitoringService = require('../services/monitoringService');
 const logger = require('../utils/logger');
+const { escapeRegExp } = require('../utils/escapeRegExp');
 
 const ALLOWED_ROLES = ['customer', 'admin'];
 const DEFAULT_PAGE_SIZE = 20;
@@ -56,7 +57,7 @@ async function listAuditLogs(req, res, next) {
     const filter = {};
 
     if (typeof req.query.action === 'string' && req.query.action.trim()) {
-      filter.action = req.query.action.trim();
+      filter.action = { $regex: escapeRegExp(req.query.action.trim()), $options: 'i' };
     }
     if (typeof req.query.actorId === 'string' && mongoose.isValidObjectId(req.query.actorId)) {
       filter.actorId = req.query.actorId;

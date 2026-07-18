@@ -1,6 +1,7 @@
 const { z } = require('zod');
 const Equipment = require('../models/Equipment');
 const { logAudit } = require('../middleware/auditLogger');
+const { escapeRegExp } = require('../utils/escapeRegExp');
 
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 100;
@@ -25,16 +26,12 @@ function formatZodError(error) {
   return error.issues.map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`);
 }
 
-function escapeRegExp(str) {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
 async function listEquipment(req, res, next) {
   try {
     const filter = {};
 
     if (typeof req.query.category === 'string' && req.query.category.trim()) {
-      filter.category = req.query.category.trim();
+      filter.category = { $regex: escapeRegExp(req.query.category.trim()), $options: 'i' };
     }
     if (typeof req.query.status === 'string' && ['active', 'retired'].includes(req.query.status)) {
       filter.status = req.query.status;
