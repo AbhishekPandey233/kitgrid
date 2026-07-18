@@ -1,6 +1,10 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import axiosClient from '../../api/axiosClient';
+import Card from '../../components/ui/Card';
+import Button from '../../components/ui/Button';
+import Alert from '../../components/ui/Alert';
+import Field, { inputClass } from '../../components/ui/Field';
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState('');
@@ -18,32 +22,43 @@ export default function ForgotPassword() {
     }
   }
 
-  if (sent) {
-    return <p role="status">If an account with that email exists, a reset link has been sent.</p>;
-  }
-
   return (
-    <form onSubmit={handleSubmit} noValidate>
-      <h1>Forgot your password?</h1>
-      <label htmlFor="forgot-email">Email</label>
-      <input
-        id="forgot-email"
-        type="email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        aria-describedby={error ? 'forgot-error' : undefined}
-        aria-invalid={!!error}
-        required
-      />
-      <button type="submit">Send reset link</button>
-      {error && (
-        <p id="forgot-error" role="alert">
-          {error}
-        </p>
-      )}
-      <p>
-        <Link to="/login">Back to login</Link>
-      </p>
-    </form>
+    <div className="mx-auto max-w-sm">
+      <Card>
+        {sent ? (
+          <Alert type="success">If an account with that email exists, a reset link has been sent.</Alert>
+        ) : (
+          <>
+            <h1 className="text-xl font-bold text-slate-900">Forgot your password?</h1>
+            <p className="mt-1 text-sm text-slate-500">We'll email you a link to reset it.</p>
+
+            <form onSubmit={handleSubmit} noValidate className="mt-6 flex flex-col gap-4">
+              <Field label="Email" htmlFor="forgot-email">
+                <input
+                  id="forgot-email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  aria-describedby={error ? 'forgot-error' : undefined}
+                  aria-invalid={!!error}
+                  className={inputClass}
+                  required
+                />
+              </Field>
+              <Button type="submit" className="w-full">
+                Send reset link
+              </Button>
+              {error && <Alert id="forgot-error">{error}</Alert>}
+            </form>
+
+            <p className="mt-6 text-center text-sm text-slate-500">
+              <Link to="/login" className="font-medium text-indigo-600 hover:text-indigo-500">
+                Back to login
+              </Link>
+            </p>
+          </>
+        )}
+      </Card>
+    </div>
   );
 }

@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react';
 import axiosClient from '../../api/axiosClient';
+import Card from '../../components/ui/Card';
+import Button from '../../components/ui/Button';
+import Alert from '../../components/ui/Alert';
+import Field, { inputClass } from '../../components/ui/Field';
+import Spinner from '../../components/ui/Spinner';
 
 export default function MfaSetup() {
   const [qrCode, setQrCode] = useState(null);
@@ -40,43 +45,67 @@ export default function MfaSetup() {
   }
 
   if (status === 'loading') {
-    return <p>Loading…</p>;
-  }
-
-  if (status === 'done') {
-    return <p role="status">MFA is enabled. You'll be asked for a code on future logins.</p>;
+    return (
+      <div className="flex justify-center">
+        <Spinner />
+      </div>
+    );
   }
 
   return (
-    <div>
-      <h1>Set up multi-factor authentication</h1>
+    <div className="mx-auto max-w-sm">
+      <Card>
+        {status === 'done' ? (
+          <Alert type="success">MFA is enabled. You'll be asked for a code on future logins.</Alert>
+        ) : (
+          <>
+            <h1 className="text-xl font-bold text-slate-900">Set up multi-factor authentication</h1>
+            <p className="mt-1 text-sm text-slate-500">Scan the QR code with your authenticator app.</p>
 
-      {error && <p role="alert">{error}</p>}
+            {error && (
+              <Alert className="mt-4" id="mfa-setup-error">
+                {error}
+              </Alert>
+            )}
 
-      {qrCode && <img src={qrCode} alt="Scan this QR code with your authenticator app" width={200} height={200} />}
-      {secret && (
-        <p>
-          Or enter this code manually: <code>{secret}</code>
-        </p>
-      )}
+            {qrCode && (
+              <div className="mt-5 flex justify-center rounded-xl border border-slate-200 bg-slate-50 p-4 animate-scale-in">
+                <img
+                  src={qrCode}
+                  alt="Scan this QR code with your authenticator app"
+                  width={180}
+                  height={180}
+                  className="rounded-lg"
+                />
+              </div>
+            )}
+            {secret && (
+              <p className="mt-3 text-center text-xs text-slate-500">
+                Or enter this code manually:{' '}
+                <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-slate-700">{secret}</code>
+              </p>
+            )}
 
-      <form onSubmit={handleVerify} noValidate>
-        <label htmlFor="mfa-setup-code">Enter the 6-digit code from your authenticator app</label>
-        <input
-          id="mfa-setup-code"
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
-          aria-describedby={error ? 'mfa-setup-error' : undefined}
-          aria-invalid={!!error}
-          required
-        />
-        <button type="submit">Confirm</button>
-        {error && (
-          <p id="mfa-setup-error" role="alert">
-            {error}
-          </p>
+            <form onSubmit={handleVerify} noValidate className="mt-6 flex flex-col gap-4">
+              <Field label="Enter the 6-digit code from your authenticator app" htmlFor="mfa-setup-code">
+                <input
+                  id="mfa-setup-code"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  aria-describedby={error ? 'mfa-setup-error' : undefined}
+                  aria-invalid={!!error}
+                  inputMode="numeric"
+                  className={inputClass}
+                  required
+                />
+              </Field>
+              <Button type="submit" className="w-full">
+                Confirm
+              </Button>
+            </form>
+          </>
         )}
-      </form>
+      </Card>
     </div>
   );
 }

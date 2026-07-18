@@ -1,8 +1,27 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import axiosClient from '../../api/axiosClient';
+import Card from '../../components/ui/Card';
+import Button from '../../components/ui/Button';
+import Alert from '../../components/ui/Alert';
+import PageHeader from '../../components/ui/PageHeader';
+import Spinner from '../../components/ui/Spinner';
 
 const DEBOUNCE_MS = 400;
+
+function EquipmentPlaceholder() {
+  return (
+    <div className="flex h-40 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-50 to-slate-100 text-indigo-300">
+      <svg className="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M21 7.5l-9-5.25L3 7.5m18 0l-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9"
+        />
+      </svg>
+    </div>
+  );
+}
 
 export default function Catalog() {
   const [search, setSearch] = useState('');
@@ -47,53 +66,93 @@ export default function Catalog() {
     setCategory(e.target.value);
   }
 
+  const fieldClass =
+    'w-56 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 transition-colors focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20';
+
   return (
     <div>
-      <h1>Equipment catalog</h1>
+      <PageHeader title="Equipment catalog" subtitle="Browse what's available and request a booking." />
 
-      <div role="search">
+      <div role="search" className="mb-8 flex flex-wrap gap-4">
         <div>
-          <label htmlFor="catalog-search">Search by name</label>
-          <input id="catalog-search" type="search" value={search} onChange={handleSearchChange} />
+          <label htmlFor="catalog-search" className="mb-1 block text-xs font-medium text-slate-500">
+            Search by name
+          </label>
+          <input id="catalog-search" type="search" value={search} onChange={handleSearchChange} className={fieldClass} />
         </div>
         <div>
-          <label htmlFor="catalog-category">Category</label>
-          <input id="catalog-category" value={category} onChange={handleCategoryChange} />
+          <label htmlFor="catalog-category" className="mb-1 block text-xs font-medium text-slate-500">
+            Category
+          </label>
+          <input id="catalog-category" value={category} onChange={handleCategoryChange} className={fieldClass} />
         </div>
       </div>
 
-      {status === 'loading' && <p>Loading…</p>}
-      {status === 'error' && <p role="alert">{error}</p>}
+      {status === 'loading' && (
+        <div className="flex justify-center">
+          <Spinner />
+        </div>
+      )}
+      {status === 'error' && <Alert>{error}</Alert>}
 
-      {status === 'ready' && equipment.length === 0 && <p>No equipment matches your search.</p>}
+      {status === 'ready' && equipment.length === 0 && (
+        <p className="animate-fade-in rounded-xl border border-dashed border-slate-300 bg-white py-12 text-center text-sm text-slate-500">
+          No equipment matches your search.
+        </p>
+      )}
 
       {status === 'ready' && equipment.length > 0 && (
-        <ul>
-          {equipment.map((item) => (
-            <li key={item._id}>
-              {item.photos?.[0] && <img src={item.photos[0]} alt={`Photo of ${item.name}`} width={80} height={80} />}
-              <h2>{item.name}</h2>
-              {item.category && <p>Category: {item.category}</p>}
-              <p>{item.quantityAvailable} available</p>
-              {item.description && <p>{item.description}</p>}
-              <Link to={`/bookings/new/${item._id}`}>Book this item</Link>
+        <ul className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          {equipment.map((item, i) => (
+            <li
+              key={item._id}
+              className="animate-fade-in-up"
+              style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}
+            >
+              <Card
+                animate={false}
+                className="flex h-full flex-col p-4 transition-shadow duration-200 hover:shadow-lg"
+              >
+                {item.photos?.[0] ? (
+                  <img
+                    src={item.photos[0]}
+                    alt={`Photo of ${item.name}`}
+                    className="h-40 w-full rounded-xl object-cover"
+                  />
+                ) : (
+                  <EquipmentPlaceholder />
+                )}
+
+                <div className="mt-4 flex flex-1 flex-col">
+                  <h2 className="font-semibold text-slate-900">{item.name}</h2>
+                  {item.category && <p className="mt-0.5 text-xs font-medium text-indigo-600">{item.category}</p>}
+                  {item.description && <p className="mt-2 line-clamp-2 text-sm text-slate-500">{item.description}</p>}
+
+                  <div className="mt-3 flex items-center justify-between">
+                    <span className="text-xs font-medium text-slate-500">{item.quantityAvailable} available</span>
+                  </div>
+
+                  <Link to={`/bookings/new/${item._id}`} className="mt-4">
+                    <Button className="w-full">Book this item</Button>
+                  </Link>
+                </div>
+              </Card>
             </li>
           ))}
         </ul>
       )}
 
       {pagination && pagination.pages > 1 && (
-        <nav aria-label="Catalog pagination">
-          <button type="button" onClick={() => setPage((p) => p - 1)} disabled={page <= 1}>
+        <nav aria-label="Catalog pagination" className="mt-8 flex items-center justify-center gap-3">
+          <Button variant="secondary" size="sm" onClick={() => setPage((p) => p - 1)} disabled={page <= 1}>
             Previous
-          </button>
-          <span>
-            {' '}
-            Page {pagination.page} of {pagination.pages}{' '}
+          </Button>
+          <span className="text-sm text-slate-500">
+            Page {pagination.page} of {pagination.pages}
           </span>
-          <button type="button" onClick={() => setPage((p) => p + 1)} disabled={page >= pagination.pages}>
+          <Button variant="secondary" size="sm" onClick={() => setPage((p) => p + 1)} disabled={page >= pagination.pages}>
             Next
-          </button>
+          </Button>
         </nav>
       )}
     </div>

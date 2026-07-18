@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useLocation, Link } from 'react-router-dom';
 import axiosClient from '../../api/axiosClient';
+import Card from '../../components/ui/Card';
+import Button from '../../components/ui/Button';
+import Alert from '../../components/ui/Alert';
+import Badge from '../../components/ui/Badge';
+import PageHeader from '../../components/ui/PageHeader';
+import Spinner from '../../components/ui/Spinner';
 
 const STATUS_LABELS = {
   pending: 'Pending',
@@ -56,35 +62,53 @@ export default function MyBookings() {
 
   return (
     <div>
-      <h1>My bookings</h1>
+      <PageHeader title="My bookings" subtitle="Track the status of your equipment requests." />
 
-      {location.state?.booked && <p role="status">Booking requested — awaiting approval.</p>}
-      {status === 'error' && <p role="alert">{error}</p>}
-      {status === 'loading' && <p>Loading…</p>}
+      {location.state?.booked && <Alert type="success" className="mb-6">Booking requested — awaiting approval.</Alert>}
+      {status === 'error' && <Alert className="mb-6">{error}</Alert>}
+
+      {status === 'loading' && (
+        <div className="flex justify-center">
+          <Spinner />
+        </div>
+      )}
 
       {status === 'ready' && bookings.length === 0 && (
-        <p>
-          You have no bookings yet. <Link to="/">Browse the catalog</Link>.
+        <p className="animate-fade-in rounded-xl border border-dashed border-slate-300 bg-white py-12 text-center text-sm text-slate-500">
+          You have no bookings yet.{' '}
+          <Link to="/catalog" className="font-medium text-indigo-600 hover:text-indigo-500">
+            Browse the catalog
+          </Link>
+          .
         </p>
       )}
 
       {status === 'ready' && bookings.length > 0 && (
-        <ul>
-          {bookings.map((booking) => (
-            <li key={booking._id}>
-              <h2>{booking.equipmentId?.name || 'Equipment'}</h2>
-              <p>
-                Status: <span className={`status-badge status-${booking.status}`}>{STATUS_LABELS[booking.status]}</span>
-              </p>
-              <p>
-                {formatDateTime(booking.startDateTime)} – {formatDateTime(booking.endDateTime)}
-              </p>
-              <p>Quantity: {booking.quantity}</p>
-              {booking.status === 'pending' && (
-                <button type="button" onClick={() => handleCancel(booking)} disabled={cancellingId === booking._id}>
-                  Cancel booking
-                </button>
-              )}
+        <ul className="flex flex-col gap-4">
+          {bookings.map((booking, i) => (
+            <li key={booking._id} className="animate-fade-in-up" style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}>
+              <Card animate={false} className="flex flex-wrap items-center justify-between gap-4 p-5">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="font-semibold text-slate-900">{booking.equipmentId?.name || 'Equipment'}</h2>
+                    <Badge status={booking.status}>{STATUS_LABELS[booking.status]}</Badge>
+                  </div>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {formatDateTime(booking.startDateTime)} – {formatDateTime(booking.endDateTime)}
+                  </p>
+                  <p className="mt-0.5 text-sm text-slate-500">Quantity: {booking.quantity}</p>
+                </div>
+                {booking.status === 'pending' && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => handleCancel(booking)}
+                    disabled={cancellingId === booking._id}
+                  >
+                    Cancel booking
+                  </Button>
+                )}
+              </Card>
             </li>
           ))}
         </ul>
