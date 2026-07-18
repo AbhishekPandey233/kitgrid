@@ -2,6 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import axiosClient from '../../api/axiosClient';
+import Card from '../../components/ui/Card';
+import Button from '../../components/ui/Button';
+import Alert from '../../components/ui/Alert';
+import Field, { inputClass } from '../../components/ui/Field';
+import Spinner from '../../components/ui/Spinner';
 
 function downloadJson(data, filename) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -15,6 +20,15 @@ function downloadJson(data, filename) {
 
 function formatDateTime(iso) {
   return new Date(iso).toLocaleString();
+}
+
+function SectionCard({ title, children }) {
+  return (
+    <Card>
+      <h2 className="text-base font-semibold text-slate-900">{title}</h2>
+      <div className="mt-4">{children}</div>
+    </Card>
+  );
 }
 
 export default function Profile() {
@@ -170,49 +184,59 @@ export default function Profile() {
   }
 
   return (
-    <div>
-      <h1>Profile</h1>
-      <p>
-        {user?.name} ({user?.email})
-      </p>
-      <button type="button" onClick={handleLogout}>
-        Log out
-      </button>
+    <div className="mx-auto flex max-w-2xl flex-col gap-6">
+      <div className="flex animate-fade-in-up flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-xl font-bold text-white">
+            {user?.name?.[0]?.toUpperCase() || '?'}
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-slate-900">{user?.name}</h1>
+            <p className="text-sm text-slate-500">{user?.email}</p>
+          </div>
+        </div>
+        <Button variant="secondary" onClick={handleLogout}>
+          Log out
+        </Button>
+      </div>
 
       {!user?.mfaEnabled && (
-        <p>
-          <Link to="/mfa-setup">Set up multi-factor authentication</Link>
-        </p>
+        <Alert>
+          Two-factor authentication is off.{' '}
+          <Link to="/mfa-setup" className="font-semibold underline">
+            Set it up
+          </Link>
+          .
+        </Alert>
       )}
 
-      <section>
-        <h2>Edit profile</h2>
-        {profileStatus === 'loading' && <p>Loading…</p>}
-        {profileStatus === 'error' && <p role="alert">{profileError}</p>}
+      <SectionCard title="Edit profile">
+        {profileStatus === 'loading' && <Spinner />}
+        {profileStatus === 'error' && <Alert>{profileError}</Alert>}
         {profileStatus === 'ready' && profile && (
-          <form onSubmit={handleSaveProfile} noValidate>
-            <div>
-              <label htmlFor="profile-name">Name</label>
+          <form onSubmit={handleSaveProfile} noValidate className="flex flex-col gap-4">
+            <Field label="Name" htmlFor="profile-name">
               <input
                 id="profile-name"
                 value={profile.name}
                 onChange={(e) => setProfile({ ...profile, name: e.target.value })}
+                className={inputClass}
                 required
               />
-            </div>
+            </Field>
 
-            <div>
-              <label htmlFor="profile-phone">Phone</label>
+            <Field label="Phone" htmlFor="profile-phone">
               <input
                 id="profile-phone"
                 value={profile.phone || ''}
                 onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
+                className={inputClass}
               />
-            </div>
+            </Field>
 
-            <fieldset>
-              <legend>Notification preferences</legend>
-              <div>
+            <fieldset className="flex flex-col gap-2">
+              <legend className="text-sm font-medium text-slate-700">Notification preferences</legend>
+              <label htmlFor="profile-notify-email" className="flex items-center gap-2 text-sm text-slate-600">
                 <input
                   id="profile-notify-email"
                   type="checkbox"
@@ -223,10 +247,11 @@ export default function Profile() {
                       notificationPreferences: { ...profile.notificationPreferences, email: e.target.checked },
                     })
                   }
+                  className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                 />
-                <label htmlFor="profile-notify-email">Email notifications</label>
-              </div>
-              <div>
+                Email notifications
+              </label>
+              <label htmlFor="profile-notify-sms" className="flex items-center gap-2 text-sm text-slate-600">
                 <input
                   id="profile-notify-sms"
                   type="checkbox"
@@ -237,91 +262,112 @@ export default function Profile() {
                       notificationPreferences: { ...profile.notificationPreferences, sms: e.target.checked },
                     })
                   }
+                  className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                 />
-                <label htmlFor="profile-notify-sms">SMS notifications</label>
-              </div>
+                SMS notifications
+              </label>
             </fieldset>
 
-            <button type="submit" disabled={savingProfile}>
-              Save changes
-            </button>
-            {saveMessage && <p role="status">{saveMessage}</p>}
+            <div className="flex items-center gap-3">
+              <Button type="submit" disabled={savingProfile}>
+                {savingProfile ? 'Saving…' : 'Save changes'}
+              </Button>
+              {saveMessage && <span className="text-sm text-slate-500">{saveMessage}</span>}
+            </div>
           </form>
         )}
-      </section>
+      </SectionCard>
 
-      <section>
-        <h2>Your data</h2>
-        <button type="button" onClick={handleExport} disabled={exporting}>
-          Export my data
-        </button>
-        {exportError && <p role="alert">{exportError}</p>}
+      <SectionCard title="Your data">
+        <div className="flex flex-col gap-4">
+          <div>
+            <Button variant="secondary" onClick={handleExport} disabled={exporting}>
+              Export my data
+            </Button>
+            {exportError && <Alert className="mt-2">{exportError}</Alert>}
+          </div>
 
-        <form onSubmit={handleImport} noValidate>
-          <label htmlFor="import-file">Import a previously exported file</label>
-          <input id="import-file" type="file" accept="application/json" ref={fileInputRef} />
-          <button type="submit" disabled={importing}>
-            Import
-          </button>
-          {importMessage && (
-            <p role={importError.length > 0 ? 'alert' : 'status'}>
-              {importMessage}
-              {importError.length > 0 && (
-                <ul>
-                  {importError.map((msg) => (
-                    <li key={msg}>{msg}</li>
-                  ))}
-                </ul>
-              )}
-            </p>
-          )}
-        </form>
-      </section>
+          <form onSubmit={handleImport} noValidate className="flex flex-col gap-3 border-t border-slate-100 pt-4">
+            <Field label="Import a previously exported file" htmlFor="import-file">
+              <input
+                id="import-file"
+                type="file"
+                accept="application/json"
+                ref={fileInputRef}
+                className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-indigo-700 hover:file:bg-indigo-100"
+              />
+            </Field>
+            <div>
+              <Button type="submit" variant="secondary" disabled={importing}>
+                Import
+              </Button>
+            </div>
+            {importMessage && (
+              <Alert type={importError.length > 0 ? 'error' : 'success'}>
+                {importMessage}
+                {importError.length > 0 && (
+                  <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                    {importError.map((msg) => (
+                      <li key={msg}>{msg}</li>
+                    ))}
+                  </ul>
+                )}
+              </Alert>
+            )}
+          </form>
+        </div>
+      </SectionCard>
 
-      <section>
-        <h2>Active sessions</h2>
-        {sessionsStatus === 'loading' && <p>Loading…</p>}
-        {sessionsError && <p role="alert">{sessionsError}</p>}
-        {sessionsStatus === 'ready' && sessions.length === 0 && <p>No active sessions.</p>}
+      <SectionCard title="Active sessions">
+        {sessionsStatus === 'loading' && <Spinner />}
+        {sessionsError && <Alert>{sessionsError}</Alert>}
+        {sessionsStatus === 'ready' && sessions.length === 0 && <p className="text-sm text-slate-500">No active sessions.</p>}
         {sessionsStatus === 'ready' && sessions.length > 0 && (
-          <ul>
+          <ul className="flex flex-col divide-y divide-slate-100">
             {sessions.map((session) => (
-              <li key={session.sessionId}>
-                <p>
-                  {session.userAgent || 'Unknown device'} {session.current && '(this device)'}
-                </p>
-                <p>Last used: {formatDateTime(session.lastUsedAt)}</p>
-                <button
-                  type="button"
+              <li key={session.sessionId} className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
+                <div>
+                  <p className="text-sm font-medium text-slate-800">
+                    {session.userAgent || 'Unknown device'}{' '}
+                    {session.current && <span className="text-xs font-semibold text-indigo-600">(this device)</span>}
+                  </p>
+                  <p className="text-xs text-slate-500">Last used: {formatDateTime(session.lastUsedAt)}</p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={() => handleRevoke(session.sessionId)}
                   disabled={revokingId === session.sessionId}
                   aria-label={`Revoke session on ${session.userAgent || 'unknown device'}`}
                 >
                   Revoke
-                </button>
+                </Button>
               </li>
             ))}
           </ul>
         )}
-      </section>
+      </SectionCard>
 
-      <section>
-        <h2>Passkeys</h2>
-        <form onSubmit={handleEnrollPasskey} noValidate>
-          <label htmlFor="passkey-label">Device name (optional)</label>
-          <input
-            id="passkey-label"
-            value={deviceLabel}
-            onChange={(e) => setDeviceLabel(e.target.value)}
-            placeholder="e.g. My Laptop"
-          />
-          <button type="submit" disabled={passkeyStatus === 'enrolling'}>
+      <SectionCard title="Passkeys">
+        <form onSubmit={handleEnrollPasskey} noValidate className="flex flex-wrap items-end gap-3">
+          <div className="min-w-48 flex-1">
+            <Field label="Device name (optional)" htmlFor="passkey-label">
+              <input
+                id="passkey-label"
+                value={deviceLabel}
+                onChange={(e) => setDeviceLabel(e.target.value)}
+                placeholder="e.g. My Laptop"
+                className={inputClass}
+              />
+            </Field>
+          </div>
+          <Button type="submit" variant="secondary" disabled={passkeyStatus === 'enrolling'}>
             Add a passkey
-          </button>
+          </Button>
         </form>
-        {passkeyStatus === 'done' && <p role="status">Passkey registered.</p>}
-        {passkeyError && <p role="alert">{passkeyError}</p>}
-      </section>
+        {passkeyStatus === 'done' && <Alert type="success" className="mt-3">Passkey registered.</Alert>}
+        {passkeyError && <Alert className="mt-3">{passkeyError}</Alert>}
+      </SectionCard>
     </div>
   );
 }

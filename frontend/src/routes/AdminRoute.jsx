@@ -1,11 +1,16 @@
 import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import Spinner from '../components/ui/Spinner';
 
 export default function AdminRoute() {
   const { user, loading } = useAuth();
 
   if (loading) {
-    return <p>Loading…</p>;
+    return (
+      <div className="flex justify-center">
+        <Spinner />
+      </div>
+    );
   }
 
   if (!user) {
@@ -13,7 +18,7 @@ export default function AdminRoute() {
   }
 
   if (user.role !== 'admin') {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/catalog" replace />;
   }
 
   return <Outlet />;
