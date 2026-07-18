@@ -1,5 +1,9 @@
 import { useEffect, useState } from 'react';
 import axiosClient from '../../api/axiosClient';
+import Button from '../../components/ui/Button';
+import Alert from '../../components/ui/Alert';
+import PageHeader from '../../components/ui/PageHeader';
+import Spinner from '../../components/ui/Spinner';
 
 function formatDateTime(iso) {
   return new Date(iso).toLocaleString();
@@ -54,33 +58,33 @@ export default function BookingApprovals() {
     const disabled = actingId === booking._id;
     if (sectionStatus === 'pending') {
       return (
-        <>
-          <button type="button" onClick={() => handleAction(booking, 'approve')} disabled={disabled}>
+        <div className="flex gap-2">
+          <Button size="sm" onClick={() => handleAction(booking, 'approve')} disabled={disabled}>
             Approve
-          </button>
-          <button type="button" onClick={() => handleAction(booking, 'reject')} disabled={disabled}>
+          </Button>
+          <Button size="sm" variant="secondary" className="text-rose-600" onClick={() => handleAction(booking, 'reject')} disabled={disabled}>
             Reject
-          </button>
-        </>
+          </Button>
+        </div>
       );
     }
     if (sectionStatus === 'approved') {
       return (
-        <>
-          <button type="button" onClick={() => handleAction(booking, 'mark-active')} disabled={disabled}>
+        <div className="flex gap-2">
+          <Button size="sm" onClick={() => handleAction(booking, 'mark-active')} disabled={disabled}>
             Mark picked up
-          </button>
-          <button type="button" onClick={() => handleAction(booking, 'mark-no-show')} disabled={disabled}>
+          </Button>
+          <Button size="sm" variant="secondary" className="text-rose-600" onClick={() => handleAction(booking, 'mark-no-show')} disabled={disabled}>
             Mark no-show
-          </button>
-        </>
+          </Button>
+        </div>
       );
     }
     if (sectionStatus === 'active') {
       return (
-        <button type="button" onClick={() => handleAction(booking, 'mark-returned')} disabled={disabled}>
+        <Button size="sm" onClick={() => handleAction(booking, 'mark-returned')} disabled={disabled}>
           Mark returned
-        </button>
+        </Button>
       );
     }
     return null;
@@ -88,50 +92,62 @@ export default function BookingApprovals() {
 
   return (
     <div>
-      <h1>Booking approvals</h1>
+      <PageHeader title="Booking approvals" subtitle="Move requests through the approval pipeline." />
 
-      {status === 'loading' && <p>Loading…</p>}
-      {error && <p role="alert">{error}</p>}
+      {status === 'loading' && (
+        <div className="flex justify-center">
+          <Spinner />
+        </div>
+      )}
+      {error && <Alert className="mb-6">{error}</Alert>}
 
       {status === 'ready' &&
-        SECTIONS.map((section) => {
+        SECTIONS.map((section, si) => {
           const bookings = byStatus[section.status];
           return (
-            <section key={section.status}>
-              <h2>
-                {section.title} ({bookings.length})
+            <section key={section.status} className="mb-8 animate-fade-in-up" style={{ animationDelay: `${si * 60}ms` }}>
+              <h2 className="mb-3 text-base font-semibold text-slate-900">
+                {section.title} <span className="font-normal text-slate-400">({bookings.length})</span>
               </h2>
-              {bookings.length === 0 && <p>None right now.</p>}
-              {bookings.length > 0 && (
-                <table>
-                  <caption className="sr-only">{section.title}</caption>
-                  <thead>
-                    <tr>
-                      <th scope="col">Equipment</th>
-                      <th scope="col">Customer</th>
-                      <th scope="col">Window</th>
-                      <th scope="col">Quantity</th>
-                      <th scope="col">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {bookings.map((booking) => (
-                      <tr key={booking._id}>
-                        <td>{booking.equipmentId?.name || 'Unknown equipment'}</td>
-                        <td>
-                          {booking.customerId?.name || 'Unknown'}
-                          <br />
-                          {booking.customerId?.email}
-                        </td>
-                        <td>
-                          {formatDateTime(booking.startDateTime)} – {formatDateTime(booking.endDateTime)}
-                        </td>
-                        <td>{booking.quantity}</td>
-                        <td>{actionsFor(section.status, booking)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              {bookings.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-slate-300 bg-white py-8 text-center text-sm text-slate-500">
+                  None right now.
+                </p>
+              ) : (
+                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-slate-100 text-sm">
+                      <caption className="sr-only">{section.title}</caption>
+                      <thead className="bg-slate-50">
+                        <tr>
+                          <th scope="col" className="px-4 py-3 text-left font-semibold text-slate-600">Equipment</th>
+                          <th scope="col" className="px-4 py-3 text-left font-semibold text-slate-600">Customer</th>
+                          <th scope="col" className="px-4 py-3 text-left font-semibold text-slate-600">Window</th>
+                          <th scope="col" className="px-4 py-3 text-left font-semibold text-slate-600">Quantity</th>
+                          <th scope="col" className="px-4 py-3 text-left font-semibold text-slate-600">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {bookings.map((booking) => (
+                          <tr key={booking._id} className="transition-colors hover:bg-slate-50">
+                            <td className="px-4 py-3 font-medium text-slate-800">
+                              {booking.equipmentId?.name || 'Unknown equipment'}
+                            </td>
+                            <td className="px-4 py-3 text-slate-500">
+                              <div>{booking.customerId?.name || 'Unknown'}</div>
+                              <div className="text-xs text-slate-400">{booking.customerId?.email}</div>
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-3 text-slate-500">
+                              {formatDateTime(booking.startDateTime)} – {formatDateTime(booking.endDateTime)}
+                            </td>
+                            <td className="px-4 py-3 text-slate-500">{booking.quantity}</td>
+                            <td className="px-4 py-3">{actionsFor(section.status, booking)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               )}
             </section>
           );

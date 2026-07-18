@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import axiosClient from '../../api/axiosClient';
+import Card from '../../components/ui/Card';
+import Button from '../../components/ui/Button';
+import Alert from '../../components/ui/Alert';
+import Field, { inputClass } from '../../components/ui/Field';
+import Spinner from '../../components/ui/Spinner';
 
 function toDatetimeLocal(date) {
   const pad = (n) => String(n).padStart(2, '0');
@@ -84,89 +89,106 @@ export default function BookingForm() {
 
   if (loadError) {
     return (
-      <div>
-        <p role="alert">{loadError}</p>
-        <Link to="/">Back to catalog</Link>
+      <div className="mx-auto max-w-sm">
+        <Card>
+          <Alert>{loadError}</Alert>
+          <Link to="/catalog" className="mt-4 inline-block text-sm font-medium text-indigo-600 hover:text-indigo-500">
+            Back to catalog
+          </Link>
+        </Card>
       </div>
     );
   }
 
   if (!equipment) {
-    return <p>Loading…</p>;
+    return (
+      <div className="flex justify-center">
+        <Spinner />
+      </div>
+    );
   }
 
   const hasErrors = errors.length > 0 || !!error;
 
   return (
-    <form onSubmit={handleSubmit} noValidate>
-      <h1>Book {equipment.name}</h1>
-      <p>{equipment.quantityAvailable} available in total</p>
+    <div className="mx-auto max-w-sm">
+      <Card>
+        <h1 className="text-xl font-bold text-slate-900">Book {equipment.name}</h1>
+        <p className="mt-1 text-sm text-slate-500">{equipment.quantityAvailable} available in total</p>
 
-      <div>
-        <label htmlFor="booking-start">Start</label>
-        <input
-          id="booking-start"
-          type="datetime-local"
-          value={start}
-          min={nowLocal}
-          onChange={(e) => setStart(e.target.value)}
-          aria-describedby={hasErrors ? 'booking-form-error' : undefined}
-          aria-invalid={hasErrors}
-          required
-        />
-      </div>
+        <form onSubmit={handleSubmit} noValidate className="mt-6 flex flex-col gap-4">
+          <Field label="Start" htmlFor="booking-start">
+            <input
+              id="booking-start"
+              type="datetime-local"
+              value={start}
+              min={nowLocal}
+              onChange={(e) => setStart(e.target.value)}
+              aria-describedby={hasErrors ? 'booking-form-error' : undefined}
+              aria-invalid={hasErrors}
+              className={inputClass}
+              required
+            />
+          </Field>
 
-      <div>
-        <label htmlFor="booking-end">End</label>
-        <input
-          id="booking-end"
-          type="datetime-local"
-          value={end}
-          min={start || nowLocal}
-          onChange={(e) => setEnd(e.target.value)}
-          aria-describedby={hasErrors ? 'booking-form-error' : undefined}
-          aria-invalid={hasErrors}
-          required
-        />
-      </div>
+          <Field label="End" htmlFor="booking-end">
+            <input
+              id="booking-end"
+              type="datetime-local"
+              value={end}
+              min={start || nowLocal}
+              onChange={(e) => setEnd(e.target.value)}
+              aria-describedby={hasErrors ? 'booking-form-error' : undefined}
+              aria-invalid={hasErrors}
+              className={inputClass}
+              required
+            />
+          </Field>
 
-      <div>
-        <label htmlFor="booking-quantity">Quantity</label>
-        <input
-          id="booking-quantity"
-          type="number"
-          min={1}
-          max={equipment.quantityAvailable}
-          value={quantity}
-          onChange={(e) => setQuantity(e.target.value)}
-          aria-describedby={hasErrors ? 'booking-form-error' : undefined}
-          aria-invalid={hasErrors}
-          required
-        />
-      </div>
+          <Field label="Quantity" htmlFor="booking-quantity">
+            <input
+              id="booking-quantity"
+              type="number"
+              min={1}
+              max={equipment.quantityAvailable}
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+              aria-describedby={hasErrors ? 'booking-form-error' : undefined}
+              aria-invalid={hasErrors}
+              className={inputClass}
+              required
+            />
+          </Field>
 
-      <div>
-        <label htmlFor="booking-note">Note (optional)</label>
-        <textarea id="booking-note" value={note} onChange={(e) => setNote(e.target.value)} />
-      </div>
+          <Field label="Note (optional)" htmlFor="booking-note">
+            <textarea
+              id="booking-note"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              rows={3}
+              className={inputClass}
+            />
+          </Field>
 
-      <button type="submit" disabled={submitting}>
-        Request booking
-      </button>
+          <Button type="submit" disabled={submitting} className="w-full">
+            {submitting ? 'Requesting…' : 'Request booking'}
+          </Button>
 
-      {hasErrors && (
-        <div id="booking-form-error" role="alert">
-          {errors.length > 0 ? (
-            <ul>
-              {errors.map((msg) => (
-                <li key={msg}>{msg}</li>
-              ))}
-            </ul>
-          ) : (
-            <p>{error}</p>
+          {hasErrors && (
+            <Alert id="booking-form-error">
+              {errors.length > 0 ? (
+                <ul className="list-disc space-y-0.5 pl-4">
+                  {errors.map((msg) => (
+                    <li key={msg}>{msg}</li>
+                  ))}
+                </ul>
+              ) : (
+                error
+              )}
+            </Alert>
           )}
-        </div>
-      )}
-    </form>
+        </form>
+      </Card>
+    </div>
   );
 }
