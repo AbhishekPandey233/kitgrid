@@ -9,6 +9,8 @@ const EXEMPT_EXACT_ROUTES = new Set([
   'POST /api/auth/mfa/challenge',
   'POST /api/auth/logout',
   'POST /api/auth/forgot-password',
+  'POST /api/auth/forgot-password/resend',
+  'POST /api/auth/forgot-password/verify-otp',
   'POST /api/auth/webauthn/login-options',
   'POST /api/auth/webauthn/login-verify',
   'POST /api/auth/password-strength',

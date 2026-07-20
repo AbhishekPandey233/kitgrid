@@ -42,6 +42,69 @@ async function consumePasswordResetToken(rawToken) {
   await redisClient.del(passwordResetKey(hashResetToken(rawToken)));
 }
 
+const OTP_TTL_SECONDS = 10 * 60;
+const OTP_RESEND_COOLDOWN_SECONDS = 60;
+const OTP_MAX_ATTEMPTS = 5;
+
+function otpKey(email) {
+  return `password_reset_otp:${email}`;
+}
+
+function otpCooldownKey(email) {
+  return `password_reset_otp_cooldown:${email}`;
+}
+
+function hashOtp(otp) {
+  return crypto.createHash('sha256').update(otp).digest('hex');
+}
+
+// True once OTP_RESEND_COOLDOWN_SECONDS has passed since the last OTP was issued for this
+// email — a server-side backstop against resend spam, independent of any client-side timer.
+async function canIssuePasswordResetOtp(email) {
+  return !(await redisClient.get(otpCooldownKey(email)));
+}
+
+async function issuePasswordResetOtp(email) {
+  const otp = crypto.randomInt(0, 1000000).toString().padStart(6, '0');
+  await redisClient.set(otpKey(email), JSON.stringify({ hash: hashOtp(otp), attempts: 0 }), { EX: OTP_TTL_SECONDS });
+  await redisClient.set(otpCooldownKey(email), '1', { EX: OTP_RESEND_COOLDOWN_SECONDS });
+  return otp;
+}
+
+// Constant-time compare against the stored hash; wrong guesses count toward OTP_MAX_ATTEMPTS so
+// the 6-digit code can't be brute-forced by hammering this endpoint.
+async function verifyPasswordResetOtp(email, submittedOtp) {
+  const key = otpKey(email);
+  const raw = await redisClient.get(key);
+  if (!raw || typeof submittedOtp !== 'string') return false;
+
+  let record;
+  try {
+    record = JSON.parse(raw);
+  } catch (err) {
+    await redisClient.del(key);
+    return false;
+  }
+
+  const expected = Buffer.from(record.hash, 'hex');
+  const submitted = Buffer.from(hashOtp(submittedOtp), 'hex');
+  const matches = expected.length === submitted.length && crypto.timingSafeEqual(expected, submitted);
+
+  if (matches) {
+    await redisClient.del(key);
+    return true;
+  }
+
+  record.attempts += 1;
+  if (record.attempts >= OTP_MAX_ATTEMPTS) {
+    await redisClient.del(key);
+  } else {
+    const ttl = await redisClient.ttl(key);
+    await redisClient.set(key, JSON.stringify(record), { EX: ttl > 0 ? ttl : OTP_TTL_SECONDS });
+  }
+  return false;
+}
+
 const WEBAUTHN_CHALLENGE_TTL_SECONDS = 5 * 60;
 
 function webauthnChallengeKey(purpose, userId) {
@@ -265,6 +328,9 @@ module.exports = {
   issuePasswordResetToken,
   verifyPasswordResetToken,
   consumePasswordResetToken,
+  canIssuePasswordResetOtp,
+  issuePasswordResetOtp,
+  verifyPasswordResetOtp,
   issueWebauthnChallenge,
   consumeWebauthnChallenge,
   accessCookieOptions,
