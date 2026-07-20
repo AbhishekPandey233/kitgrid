@@ -4,6 +4,7 @@ import Button from '../../components/ui/Button';
 import Alert from '../../components/ui/Alert';
 import PageHeader from '../../components/ui/PageHeader';
 import Spinner from '../../components/ui/Spinner';
+import EquipmentThumbnail from '../../components/ui/EquipmentThumbnail';
 
 function formatDateTime(iso) {
   return new Date(iso).toLocaleString();
@@ -131,7 +132,15 @@ export default function BookingApprovals() {
                         {bookings.map((booking) => (
                           <tr key={booking._id} className="transition-colors hover:bg-slate-50">
                             <td className="px-4 py-3 font-medium text-slate-800">
-                              {booking.equipmentId?.name || 'Unknown equipment'}
+                              <div className="flex items-center gap-3">
+                                <EquipmentThumbnail
+                                  src={booking.equipmentId?.photos?.[0]}
+                                  alt=""
+                                  className="h-10 w-10 shrink-0 rounded-md"
+                                  iconClassName="h-4 w-4"
+                                />
+                                {booking.equipmentId?.name || 'Unknown equipment'}
+                              </div>
                             </td>
                             <td className="px-4 py-3 text-slate-500">
                               <div>{booking.customerId?.name || 'Unknown'}</div>

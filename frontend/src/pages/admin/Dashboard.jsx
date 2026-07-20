@@ -28,6 +28,7 @@ export default function Dashboard() {
   const [pendingCount, setPendingCount] = useState(null);
   const [activeCount, setActiveCount] = useState(null);
   const [alerts, setAlerts] = useState([]);
+  const [fullyBooked, setFullyBooked] = useState([]);
   const [status, setStatus] = useState('loading');
   const [error, setError] = useState('');
 
@@ -38,12 +39,14 @@ export default function Dashboard() {
       axiosClient.get('/admin/bookings', { params: { status: 'pending', limit: 1 } }),
       axiosClient.get('/admin/bookings', { params: { status: 'active', limit: 1 } }),
       axiosClient.get('/admin/alerts', { params: { resolved: 'false', limit: 5 } }),
+      axiosClient.get('/equipment', { params: { status: 'active', limit: 100 } }),
     ])
-      .then(([pendingRes, activeRes, alertsRes]) => {
+      .then(([pendingRes, activeRes, alertsRes, equipmentRes]) => {
         if (cancelled) return;
         setPendingCount(pendingRes.data.pagination.total);
         setActiveCount(activeRes.data.pagination.total);
         setAlerts(alertsRes.data.alerts);
+        setFullyBooked(equipmentRes.data.equipment.filter((item) => item.available === 0));
         setStatus('ready');
       })
       .catch((err) => {
@@ -86,6 +89,26 @@ export default function Dashboard() {
           accent={{ bg: 'bg-emerald-100', dot: 'bg-emerald-500' }}
         />
       </section>
+
+      {fullyBooked.length > 0 && (
+        <section className="mt-8 animate-fade-in-up">
+          <h2 className="mb-3 text-base font-semibold text-slate-900">Fully booked equipment</h2>
+          <div className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            {fullyBooked.map((item) => (
+              <Link
+                key={item._id}
+                to="/admin/equipment"
+                className="block p-4 transition-colors hover:bg-slate-50"
+              >
+                <p className="text-sm font-medium text-slate-800">{item.name}</p>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  0 of {item.quantityAvailable} available{item.category ? ` · ${item.category}` : ''}
+                </p>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="mt-8 animate-fade-in-up">
         <h2 className="mb-3 text-base font-semibold text-slate-900">Recent alerts</h2>
