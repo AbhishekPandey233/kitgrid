@@ -13,6 +13,8 @@ const {
   listSessionsForUser,
   revokeSessionForUser,
   forgotPassword,
+  resendForgotPasswordOtp,
+  verifyForgotPasswordOtp,
   resetPassword,
   getDebugEmails,
   webauthnRegisterOptions,
@@ -45,6 +47,8 @@ router.post('/mfa/verify-setup', strictAuthLimiter, requireAuth, mfaVerifySetup)
 router.post('/mfa/challenge', strictAuthLimiter, mfaChallenge);
 
 router.post('/forgot-password', strictAuthLimiter, forgotPassword);
+router.post('/forgot-password/resend', strictAuthLimiter, resendForgotPasswordOtp);
+router.post('/forgot-password/verify-otp', strictAuthLimiter, verifyForgotPasswordOtp);
 router.post('/reset-password/:token', strictAuthLimiter, resetPassword);
 router.get('/debug/last-emails', getDebugEmails);
 
