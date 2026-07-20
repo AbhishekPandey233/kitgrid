@@ -331,40 +331,78 @@ async function mfaChallenge(req, res, next) {
   }
 }
 
+// Shared by the initial forgot-password request and the resend button — same email/cooldown/
+// audit handling either way, since resending is just asking for a fresh OTP.
+async function sendPasswordResetOtp(req) {
+  const { email } = req.body || {};
+  if (!email) return;
+
+  const normalizedEmail = String(email).trim().toLowerCase();
+  if (!(await tokenService.canIssuePasswordResetOtp(normalizedEmail))) {
+    return;
+  }
+
+  const user = await User.findOne({ email: normalizedEmail });
+  if (!user) return;
+
+  const otp = await tokenService.issuePasswordResetOtp(normalizedEmail);
+
+  try {
+    await emailService.sendPasswordResetOtpEmail(user.email, otp);
+  } catch (err) {
+    logger.error('Failed to send password reset OTP email', { userId: user._id.toString(), error: err.message });
+  }
+
+  await logAudit({
+    actorId: user._id,
+    action: 'auth.password_reset_requested',
+    resourceType: 'User',
+    resourceId: user._id,
+    ip: req.ip,
+    userAgent: req.headers['user-agent'],
+  });
+}
+
 async function forgotPassword(req, res, next) {
   try {
-    const { email } = req.body || {};
-    const genericResponse = () =>
-      res.status(200).json({ message: 'If an account with that email exists, a reset link has been sent.' });
+    await sendPasswordResetOtp(req);
+    return res.status(200).json({ message: 'If an account with that email exists, a code has been sent.' });
+  } catch (err) {
+    next(err);
+  }
+}
 
-    if (!email) {
-      return genericResponse();
+async function resendForgotPasswordOtp(req, res, next) {
+  try {
+    await sendPasswordResetOtp(req);
+    return res.status(200).json({ message: 'If an account with that email exists, a new code has been sent.' });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function verifyForgotPasswordOtp(req, res, next) {
+  try {
+    const { email, otp } = req.body || {};
+    const invalidResponse = () => res.status(400).json({ error: 'Invalid or expired code' });
+
+    if (!email || !otp) {
+      return invalidResponse();
     }
 
     const normalizedEmail = String(email).trim().toLowerCase();
     const user = await User.findOne({ email: normalizedEmail });
-
-    if (user) {
-      const rawToken = await tokenService.issuePasswordResetToken(user._id.toString());
-      const resetUrl = `${env.frontendOrigin}/reset-password/${rawToken}`;
-
-      try {
-        await emailService.sendPasswordResetEmail(user.email, resetUrl);
-      } catch (err) {
-        logger.error('Failed to send password reset email', { userId: user._id.toString(), error: err.message });
-      }
-
-      await logAudit({
-        actorId: user._id,
-        action: 'auth.password_reset_requested',
-        resourceType: 'User',
-        resourceId: user._id,
-        ip: req.ip,
-        userAgent: req.headers['user-agent'],
-      });
+    if (!user) {
+      return invalidResponse();
     }
 
-    return genericResponse();
+    const valid = await tokenService.verifyPasswordResetOtp(normalizedEmail, String(otp));
+    if (!valid) {
+      return invalidResponse();
+    }
+
+    const resetToken = await tokenService.issuePasswordResetToken(user._id.toString());
+    return res.status(200).json({ resetToken });
   } catch (err) {
     next(err);
   }
@@ -841,6 +879,8 @@ module.exports = {
   revokeSessionForUser,
   getCsrfToken,
   forgotPassword,
+  resendForgotPasswordOtp,
+  verifyForgotPasswordOtp,
   resetPassword,
   getDebugEmails,
   webauthnRegisterOptions,

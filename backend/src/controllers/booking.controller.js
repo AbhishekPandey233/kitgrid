@@ -6,8 +6,7 @@ const Equipment = require('../models/Equipment');
 const HttpError = require('../utils/HttpError');
 const { pick } = require('../utils/pick');
 const { logAudit } = require('../middleware/auditLogger');
-
-const BLOCKING_STATUSES = ['pending', 'approved', 'active'];
+const { BLOCKING_STATUSES } = require('../utils/availability');
 
 const dateSchema = z.coerce
   .date()
@@ -51,7 +50,7 @@ async function listAllBookings(req, res, next) {
         .sort({ createdAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
-        .populate('equipmentId', 'name category')
+        .populate('equipmentId', 'name category photos')
         .populate('customerId', 'name email'),
       Booking.countDocuments(filter),
     ]);
@@ -70,7 +69,7 @@ async function listMyBookings(req, res, next) {
     const bookings = await Booking.find({ customerId: req.user._id })
       .sort({ createdAt: -1 })
       .limit(MY_BOOKINGS_LIMIT)
-      .populate('equipmentId', 'name category');
+      .populate('equipmentId', 'name category photos description quantityAvailable');
 
     return res.status(200).json({ bookings });
   } catch (err) {
@@ -100,6 +99,12 @@ async function updateBooking(req, res, next) {
 
 async function deleteBooking(req, res, next) {
   try {
+    if (req.resource.status !== 'returned') {
+      return res.status(409).json({
+        error: `Cannot delete a booking with status '${req.resource.status}' (only returned bookings can be deleted)`,
+      });
+    }
+
     await req.resource.deleteOne();
     return res.status(204).send();
   } catch (err) {

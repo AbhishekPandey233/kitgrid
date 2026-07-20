@@ -2,6 +2,21 @@ const { z } = require('zod');
 const Equipment = require('../models/Equipment');
 const { logAudit } = require('../middleware/auditLogger');
 const { escapeRegExp } = require('../utils/escapeRegExp');
+const { getReservedQuantities } = require('../utils/availability');
+const env = require('../config/env');
+
+// Adds an `available` field (stock minus units reserved right now) to each equipment doc,
+// without touching the stored quantityAvailable — that field is total stock, and availability
+// is time-window dependent (see booking.controller.js's overlap check), so it can't just be
+// decremented on booking.
+async function withAvailability(items) {
+  const reserved = await getReservedQuantities(items.map((item) => item._id));
+  return items.map((item) => {
+    const plain = item.toObject();
+    plain.available = Math.max(0, plain.quantityAvailable - (reserved.get(item._id.toString()) || 0));
+    return plain;
+  });
+}
 
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 100;
@@ -24,6 +39,17 @@ const updateEquipmentSchema = createEquipmentSchema.partial().strict();
 
 function formatZodError(error) {
   return error.issues.map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`);
+}
+
+// POST /api/equipment/upload-image — the multer middleware (imageUpload.single('image')) has
+// already run and validated the file by the time this handler is reached; it just has to
+// exist. Returns a full absolute URL (not a relative path) since createEquipmentSchema's
+// photos field requires one.
+async function uploadEquipmentImage(req, res) {
+  if (!req.file) {
+    return res.status(400).json({ error: 'image file is required' });
+  }
+  return res.status(201).json({ url: `${env.backendOrigin}/equipmentImages/${req.file.filename}` });
 }
 
 async function listEquipment(req, res, next) {
@@ -52,7 +78,7 @@ async function listEquipment(req, res, next) {
     ]);
 
     return res.status(200).json({
-      equipment: items,
+      equipment: await withAvailability(items),
       pagination: { page, limit, total, pages: Math.ceil(total / limit) },
     });
   } catch (err) {
@@ -66,7 +92,8 @@ async function getEquipmentById(req, res, next) {
     if (!item) {
       return res.status(404).json({ error: 'Equipment not found' });
     }
-    return res.status(200).json({ equipment: item });
+    const [withAvail] = await withAvailability([item]);
+    return res.status(200).json({ equipment: withAvail });
   } catch (err) {
     if (err.name === 'CastError') {
       return res.status(404).json({ error: 'Equipment not found' });
@@ -157,4 +184,11 @@ async function deleteEquipment(req, res, next) {
   }
 }
 
-module.exports = { listEquipment, getEquipmentById, createEquipment, updateEquipment, deleteEquipment };
+module.exports = {
+  uploadEquipmentImage,
+  listEquipment,
+  getEquipmentById,
+  createEquipment,
+  updateEquipment,
+  deleteEquipment,
+};
