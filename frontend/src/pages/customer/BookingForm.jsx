@@ -28,12 +28,15 @@ export default function BookingForm() {
 
   const nowLocal = toDatetimeLocal(new Date());
 
+  function fetchEquipment() {
+    return axiosClient.get(`/equipment/${equipmentId}`).then(({ data }) => data.equipment);
+  }
+
   useEffect(() => {
     let cancelled = false;
-    axiosClient
-      .get(`/equipment/${equipmentId}`)
-      .then(({ data }) => {
-        if (!cancelled) setEquipment(data.equipment);
+    fetchEquipment()
+      .then((data) => {
+        if (!cancelled) setEquipment(data);
       })
       .catch((err) => {
         if (!cancelled) setLoadError(err.response?.data?.error || 'Failed to load equipment');
@@ -82,6 +85,11 @@ export default function BookingForm() {
     } catch (err) {
       setErrors(err.response?.data?.details || []);
       setError(err.response?.data?.error || 'Booking failed');
+      // A 409 means another user booked overlapping units between page load and submit —
+      // refresh so the displayed availability reflects reality instead of stale data.
+      if (err.response?.status === 409) {
+        fetchEquipment().then(setEquipment).catch(() => {});
+      }
     } finally {
       setSubmitting(false);
     }
@@ -114,7 +122,9 @@ export default function BookingForm() {
     <div className="mx-auto max-w-sm">
       <Card>
         <h1 className="text-xl font-bold text-slate-900">Book {equipment.name}</h1>
-        <p className="mt-1 text-sm text-slate-500">{equipment.quantityAvailable} available in total</p>
+        <p className="mt-1 text-sm text-slate-500">
+          {equipment.available} available now &middot; {equipment.quantityAvailable} in total
+        </p>
 
         <form onSubmit={handleSubmit} noValidate className="mt-6 flex flex-col gap-4">
           <Field label="Start" htmlFor="booking-start">
