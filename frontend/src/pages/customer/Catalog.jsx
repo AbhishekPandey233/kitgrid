@@ -6,22 +6,10 @@ import Button from '../../components/ui/Button';
 import Alert from '../../components/ui/Alert';
 import PageHeader from '../../components/ui/PageHeader';
 import Spinner from '../../components/ui/Spinner';
+import EquipmentThumbnail from '../../components/ui/EquipmentThumbnail';
 
 const DEBOUNCE_MS = 400;
-
-function EquipmentPlaceholder() {
-  return (
-    <div className="flex h-40 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-50 to-slate-100 text-indigo-300">
-      <svg className="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          d="M21 7.5l-9-5.25L3 7.5m18 0l-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9"
-        />
-      </svg>
-    </div>
-  );
-}
+const POLL_MS = 15000;
 
 export default function Catalog() {
   const [search, setSearch] = useState('');
@@ -34,25 +22,33 @@ export default function Catalog() {
 
   useEffect(() => {
     let cancelled = false;
-    setStatus('loading');
-    const timer = setTimeout(() => {
+
+    function fetchEquipment({ showSpinner }) {
+      if (showSpinner) setStatus('loading');
       axiosClient
         .get('/equipment', { params: { status: 'active', q: search || undefined, category: category || undefined, page } })
         .then(({ data }) => {
           if (cancelled) return;
-          setEquipment(data.equipment);
+          setEquipment(data.equipment.filter((item) => item.available > 0));
           setPagination(data.pagination);
           setStatus('ready');
         })
         .catch((err) => {
-          if (cancelled) return;
+          if (cancelled || !showSpinner) return;
           setError(err.response?.data?.error || 'Failed to load equipment');
           setStatus('error');
         });
-    }, DEBOUNCE_MS);
+    }
+
+    const debounceTimer = setTimeout(() => fetchEquipment({ showSpinner: true }), DEBOUNCE_MS);
+    // Availability changes whenever any user books/cancels/returns equipment, so the list is
+    // polled in the background to stay current without the user needing to refresh manually.
+    const pollTimer = setInterval(() => fetchEquipment({ showSpinner: false }), POLL_MS);
+
     return () => {
       cancelled = true;
-      clearTimeout(timer);
+      clearTimeout(debounceTimer);
+      clearInterval(pollTimer);
     };
   }, [search, category, page]);
 
@@ -113,15 +109,7 @@ export default function Catalog() {
                 animate={false}
                 className="flex h-full flex-col p-4 transition-shadow duration-200 hover:shadow-lg"
               >
-                {item.photos?.[0] ? (
-                  <img
-                    src={item.photos[0]}
-                    alt={`Photo of ${item.name}`}
-                    className="h-40 w-full rounded-xl object-cover"
-                  />
-                ) : (
-                  <EquipmentPlaceholder />
-                )}
+                <EquipmentThumbnail src={item.photos?.[0]} alt={`Photo of ${item.name}`} />
 
                 <div className="mt-4 flex flex-1 flex-col">
                   <h2 className="font-semibold text-slate-900">{item.name}</h2>
@@ -129,7 +117,7 @@ export default function Catalog() {
                   {item.description && <p className="mt-2 line-clamp-2 text-sm text-slate-500">{item.description}</p>}
 
                   <div className="mt-3 flex items-center justify-between">
-                    <span className="text-xs font-medium text-slate-500">{item.quantityAvailable} available</span>
+                    <span className="text-xs font-medium text-slate-500">{item.available} available</span>
                   </div>
 
                   <Link to={`/bookings/new/${item._id}`} className="mt-4">
