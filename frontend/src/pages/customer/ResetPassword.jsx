@@ -1,35 +1,23 @@
 import { useState } from 'react';
-import { useParams, useLocation, useNavigate, Link } from 'react-router-dom';
+import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import axiosClient from '../../api/axiosClient';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Alert from '../../components/ui/Alert';
-import Field, { inputClass } from '../../components/ui/Field';
+import Field from '../../components/ui/Field';
 import PasswordField from '../../components/ui/PasswordField';
+import ForgotPassword from './ForgotPassword';
 
 export default function ResetPassword() {
   const { token } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
 
-  const [email, setEmail] = useState(location.state?.email || '');
   const [password, setPassword] = useState('');
-  const [sent, setSent] = useState(false);
   const [errors, setErrors] = useState([]);
   const [error, setError] = useState('');
 
   const isExpiredRedirect = location.state?.reason === 'expired';
-
-  async function handleRequestLink(e) {
-    e.preventDefault();
-    setError('');
-    try {
-      await axiosClient.post('/auth/forgot-password', { email });
-      setSent(true);
-    } catch (err) {
-      setError(err.response?.data?.error || 'Something went wrong, please try again');
-    }
-  }
 
   async function handleSetNewPassword(e) {
     e.preventDefault();
@@ -46,49 +34,15 @@ export default function ResetPassword() {
 
   if (!token) {
     return (
-      <div className="mx-auto max-w-sm">
-        <Card>
-          {sent ? (
-            <Alert type="success">If an account with that email exists, a reset link has been sent.</Alert>
-          ) : (
-            <>
-              <h1 className="text-xl font-bold text-slate-900">
-                {isExpiredRedirect ? 'Your password has expired' : 'Reset your password'}
-              </h1>
-              {isExpiredRedirect && (
-                <p className="mt-1 text-sm text-slate-500">
-                  For your security, passwords must be renewed periodically. Enter your email to get a reset link.
-                </p>
-              )}
-
-              <form onSubmit={handleRequestLink} noValidate className="mt-6 flex flex-col gap-4">
-                <Field label="Email" htmlFor="reset-request-email">
-                  <input
-                    id="reset-request-email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    aria-describedby={error ? 'reset-request-error' : undefined}
-                    aria-invalid={!!error}
-                    className={inputClass}
-                    required
-                  />
-                </Field>
-                <Button type="submit" className="w-full">
-                  Send reset link
-                </Button>
-                {error && <Alert id="reset-request-error">{error}</Alert>}
-              </form>
-
-              <p className="mt-6 text-center text-sm text-slate-500">
-                <Link to="/login" className="font-medium text-indigo-600 hover:text-indigo-500">
-                  Back to login
-                </Link>
-              </p>
-            </>
-          )}
-        </Card>
-      </div>
+      <ForgotPassword
+        heading={isExpiredRedirect ? 'Your password has expired' : 'Reset your password'}
+        subtitle={
+          isExpiredRedirect
+            ? 'For your security, passwords must be renewed periodically. Enter your email to get a reset code.'
+            : "We'll email you a code to reset it."
+        }
+        initialEmail={location.state?.email || ''}
+      />
     );
   }
 
