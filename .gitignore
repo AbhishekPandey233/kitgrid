@@ -33,3 +33,7 @@ Thumbs.db
 
 # Docs (coursework write-ups, pentest evidence, etc.) kept local, not committed
 docs/
+
+# User-uploaded equipment photos — the directory itself is tracked (.gitkeep), contents aren't
+backend/public/equipmentImages/*
+!backend/public/equipmentImages/.gitkeep
