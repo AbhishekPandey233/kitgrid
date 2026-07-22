@@ -25,5 +25,12 @@ export default [
     },
     settings: { react: { version: 'detect' } },
   },
+  {
+    // Config files run in Node, not the browser — separate globals from app source.
+    files: ['vite.config.js'],
+    languageOptions: {
+      globals: { ...globals.node },
+    },
+  },
   { ignores: ['dist/**', 'node_modules/**'] },
 ];

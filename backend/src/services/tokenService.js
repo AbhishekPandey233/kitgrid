@@ -294,7 +294,10 @@ function verifyCsrfToken(sessionId, token) {
 const baseCookieOptions = {
   httpOnly: true,
   sameSite: 'strict',
-  secure: env.nodeEnv === 'production',
+  // Secure in real production, and also whenever this process is itself terminating TLS
+  // locally (see server.js/env.tlsEnabled) — cookies should be Secure any time the
+  // connection actually is, no more and no less.
+  secure: env.nodeEnv === 'production' || env.tlsEnabled,
 };
 
 const accessCookieOptions = {

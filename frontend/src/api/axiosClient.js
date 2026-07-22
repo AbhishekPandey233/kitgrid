@@ -11,8 +11,12 @@ function setCsrfToken(token) {
   csrfToken = token;
 }
 
+// Derived from the page's own origin (protocol + hostname), not a static env var — the
+// backend is always reachable on port 5000 relative to whatever host/protocol the frontend
+// itself was loaded from (localhost, kitgrid, an IP, http or https), so this keeps working
+// across every dev/pentest hostname without needing VITE_API_BASE_URL edited per setup.
 const axiosClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL,
+  baseURL: `${window.location.protocol}//${window.location.hostname}:5000/api`,
   withCredentials: true,
 });
 

@@ -6,6 +6,9 @@ node_modules/
 .env.local
 .env.*.local
 
+# Local TLS cert/key (mkcert-issued, machine-specific — regenerate via mkcert, never commit)
+certs/
+
 # Build output
 dist/
 build/

@@ -65,6 +65,13 @@ services:
     container_name: kitgrid-backend
     restart: unless-stopped
     env_file: ./backend/.env
+    # TLS_CERT_PATH/TLS_KEY_PATH point at a mkcert-issued dev cert (see certs/, gitignored —
+    # generate your own with `mkcert -cert-file certs/dev-cert.pem -key-file certs/dev-key.pem
+    # localhost kitgrid 127.0.0.1 ::1 <your VMware host IPs>`). server.js falls back to plain
+    # HTTP if these are unset, so this is optional but on by default here.
+    environment:
+      - TLS_CERT_PATH=/certs/dev-cert.pem
+      - TLS_KEY_PATH=/certs/dev-key.pem
     ports:
       - "5000:5000"
     depends_on:
@@ -75,6 +82,7 @@ services:
     volumes:
       - ./backend:/app
       - /app/node_modules
+      - ./certs:/certs:ro
     networks:
       - kitgrid-net
 
@@ -83,6 +91,9 @@ services:
     container_name: kitgrid-frontend
     restart: unless-stopped
     env_file: ./frontend/.env
+    environment:
+      - TLS_CERT_PATH=/certs/dev-cert.pem
+      - TLS_KEY_PATH=/certs/dev-key.pem
     ports:
       - "5173:5173"
     depends_on:
@@ -90,6 +101,7 @@ services:
     volumes:
       - ./frontend:/app
       - /app/node_modules
+      - ./certs:/certs:ro
     networks:
       - kitgrid-net
 
