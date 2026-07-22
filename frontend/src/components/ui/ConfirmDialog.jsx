@@ -13,7 +13,7 @@ export default function ConfirmDialog({
   onCancel,
 }) {
   return (
-    <Modal open={open} onClose={onCancel} className="max-w-sm p-6">
+    <Modal open={open} onClose={onCancel} className="max-w-sm p-6" aria-label={title}>
       <h2 className="text-base font-semibold text-slate-900">{title}</h2>
       {message && <p className="mt-2 text-sm text-slate-500">{message}</p>}
       <div className="mt-5 flex justify-end gap-3">

@@ -23,6 +23,34 @@ services:
       timeout: 5s
       retries: 10
 
+  # One-shot: a --replSet mongod doesn't have a primary (and rejects app connections that
+  # request replicaSet=rs0) until rs.initiate() has been called on it once. Without this,
+  # a fresh `docker compose up` on a clean volume never gets past "server selection timed
+  # out" in the backend. Idempotent — does nothing if the set is already initiated, so it's
+  # safe to run again on every `docker compose up`.
+  #
+  # The member host is set explicitly to "mongo:27017" (the Docker DNS name other containers
+  # use to reach it) rather than left to rs.initiate()'s auto-detection, which records the
+  # container's own short hostname/ID instead — unresolvable to any other container, and a
+  # config only the mongo container itself can (sometimes) work around by reusing an
+  # already-open connection. Other containers doing a fresh connection see
+  # "Our replica set config is invalid or we are not a member of it".
+  mongo-init:
+    image: mongo:7
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - kitgrid-net
+    restart: "no"
+    entrypoint:
+      - mongosh
+      - --host
+      - mongo
+      - --quiet
+      - --eval
+      - "try { rs.status() } catch (e) { rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'mongo:27017' }] }) }"
+
   redis:
     image: redis:7-alpine
     container_name: kitgrid-redis
@@ -40,8 +68,10 @@ services:
     ports:
       - "5000:5000"
     depends_on:
-      - mongo
-      - redis
+      mongo-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
     volumes:
       - ./backend:/app
       - /app/node_modules

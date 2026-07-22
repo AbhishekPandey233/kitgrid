@@ -137,8 +137,8 @@ describe('password reset + expiry', () => {
     });
 
     test('a successful reset revokes every existing session for the account', async () => {
-      const sessionA = await tokenService.issueSession(user);
-      const sessionB = await tokenService.issueSession(user);
+      await tokenService.issueSession(user);
+      await tokenService.issueSession(user);
       const before = await redisClient.keys(`session:${user._id.toString()}:*`);
       expect(before.length).toBe(2);
 

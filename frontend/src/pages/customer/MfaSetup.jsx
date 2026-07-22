@@ -56,7 +56,7 @@ export default function MfaSetup() {
     <div className="mx-auto max-w-sm">
       <Card>
         {status === 'done' ? (
-          <Alert type="success">MFA is enabled. You'll be asked for a code on future logins.</Alert>
+          <Alert type="success">MFA is enabled. You&rsquo;ll be asked for a code on future logins.</Alert>
         ) : (
           <>
             <h1 className="text-xl font-bold text-slate-900">Set up multi-factor authentication</h1>

@@ -147,7 +147,6 @@ describe('audit trail is actually wired into real events', () => {
 });
 
 describe('GET /api/admin/audit-logs', () => {
-  const stamp = Date.now();
   const actorId = new mongoose.Types.ObjectId();
   const entryIds = [];
 

@@ -856,6 +856,7 @@ async function logout(req, res, next) {
         const { sub: userId, sid: sessionId } = tokenService.verifyRefreshToken(token);
         await tokenService.revokeSession(userId, sessionId);
       } catch (err) {
+        // Token already invalid/expired — logout should succeed regardless.
       }
     }
     clearAuthCookies(res);

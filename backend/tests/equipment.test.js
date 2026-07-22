@@ -4,7 +4,6 @@ const User = require('../src/models/User');
 const Equipment = require('../src/models/Equipment');
 const {
   listEquipment,
-  getEquipmentById,
   createEquipment,
   updateEquipment,
   deleteEquipment,

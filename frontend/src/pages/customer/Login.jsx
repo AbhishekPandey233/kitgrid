@@ -170,7 +170,7 @@ export default function Login() {
               onExpire={() => setCaptchaToken(null)}
             />
           ) : (
-            <Alert>CAPTCHA is not configured (VITE_CAPTCHA_SITE_KEY is missing) — login will be rejected by the backend until it's set.</Alert>
+            <Alert>CAPTCHA is not configured (VITE_CAPTCHA_SITE_KEY is missing) — login will be rejected by the backend until it&rsquo;s set.</Alert>
           )}
 
           <Button type="submit" disabled={submitting} className="w-full">
@@ -180,7 +180,7 @@ export default function Login() {
           {error && <Alert id="login-error">{error}</Alert>}
         </form>
 
-        <div className="my-5 flex items-center gap-3 text-xs font-medium text-slate-400">
+        <div className="my-5 flex items-center gap-3 text-xs font-medium text-slate-500">
           <div className="h-px flex-1 bg-slate-200" />
           or
           <div className="h-px flex-1 bg-slate-200" />

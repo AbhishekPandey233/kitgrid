@@ -107,9 +107,15 @@ export default function Landing() {
 
   return (
     <div className="min-h-screen bg-slate-50">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-lg focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-indigo-700 focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+      >
+        Skip to main content
+      </a>
       <LandingNav />
 
-      <section className="relative overflow-hidden">
+      <section id="main-content" className="relative overflow-hidden">
         <div
           className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_theme(colors.indigo.100),_transparent_55%)]"
           aria-hidden="true"
@@ -200,9 +206,9 @@ export default function Landing() {
           <h2 className="text-2xl font-bold tracking-tight text-slate-900">About KitGrid</h2>
           <p className="mt-4 text-slate-600">
             KitGrid was built to solve a simple but common problem: teams that share physical
-            equipment — tools, gear, AV kit — need a reliable way to know what's available, who
-            has it, and when it's coming back. Spreadsheets and group chats don't scale, and
-            they don't leave an audit trail.
+            equipment — tools, gear, AV kit — need a reliable way to know what&rsquo;s available, who
+            has it, and when it&rsquo;s coming back. Spreadsheets and group chats don&rsquo;t scale, and
+            they don&rsquo;t leave an audit trail.
           </p>
           <p className="mt-4 text-slate-600">
             Built with security as a first-class concern, not an afterthought: encrypted
@@ -216,7 +222,7 @@ export default function Landing() {
         <div className="mx-auto max-w-3xl px-4 text-center sm:px-6 lg:px-8">
           <h2 className="animate-fade-in-up text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">Get in touch</h2>
           <p className="mt-3 animate-fade-in-up text-slate-600" style={{ animationDelay: '60ms' }}>
-            Questions, feedback, or an issue with a booking? We're happy to help.
+            Questions, feedback, or an issue with a booking? We&rsquo;re happy to help.
           </p>
           <a
             href="mailto:support@kitgrid.example"

@@ -110,7 +110,7 @@ export default function ForgotPassword({
         </p>
       </Card>
 
-      <Modal open={otpOpen} onClose={() => setOtpOpen(false)} className="max-w-sm p-6">
+      <Modal open={otpOpen} onClose={() => setOtpOpen(false)} className="max-w-sm p-6" aria-label="Enter your code">
         <h2 className="text-base font-semibold text-slate-900">Enter your code</h2>
         <p className="mt-1 text-sm text-slate-500">
           If an account exists for <span className="font-medium text-slate-700">{email}</span>, we sent a 6-digit

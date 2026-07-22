@@ -108,7 +108,7 @@ export default function BookingApprovals() {
           return (
             <section key={section.status} className="mb-8 animate-fade-in-up" style={{ animationDelay: `${si * 60}ms` }}>
               <h2 className="mb-3 text-base font-semibold text-slate-900">
-                {section.title} <span className="font-normal text-slate-400">({bookings.length})</span>
+                {section.title} <span className="font-normal text-slate-500">({bookings.length})</span>
               </h2>
               {bookings.length === 0 ? (
                 <p className="rounded-xl border border-dashed border-slate-300 bg-white py-8 text-center text-sm text-slate-500">
@@ -144,7 +144,7 @@ export default function BookingApprovals() {
                             </td>
                             <td className="px-4 py-3 text-slate-500">
                               <div>{booking.customerId?.name || 'Unknown'}</div>
-                              <div className="text-xs text-slate-400">{booking.customerId?.email}</div>
+                              <div className="text-xs text-slate-500">{booking.customerId?.email}</div>
                             </td>
                             <td className="whitespace-nowrap px-4 py-3 text-slate-500">
                               {formatDateTime(booking.startDateTime)} – {formatDateTime(booking.endDateTime)}

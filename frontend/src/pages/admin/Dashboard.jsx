@@ -121,10 +121,10 @@ export default function Dashboard() {
             {alerts.map((alert) => (
               <div key={alert._id} className="p-4">
                 <p className="text-sm font-medium text-slate-800">
-                  {alert.type} <span className="font-normal text-slate-400">from {alert.ip}</span>
+                  {alert.type} <span className="font-normal text-slate-500">from {alert.ip}</span>
                 </p>
                 {alert.details && <p className="mt-0.5 text-sm text-slate-500">{alert.details}</p>}
-                <p className="mt-1 text-xs text-slate-400">{formatDateTime(alert.timestamp)}</p>
+                <p className="mt-1 text-xs text-slate-500">{formatDateTime(alert.timestamp)}</p>
               </div>
             ))}
           </div>

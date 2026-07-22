@@ -134,7 +134,7 @@ export default function Register() {
               onExpire={() => setCaptchaToken(null)}
             />
           ) : (
-            <Alert>CAPTCHA is not configured (VITE_CAPTCHA_SITE_KEY is missing) — registration will be rejected by the backend until it's set.</Alert>
+            <Alert>CAPTCHA is not configured (VITE_CAPTCHA_SITE_KEY is missing) — registration will be rejected by the backend until it&rsquo;s set.</Alert>
           )}
 
           <Button type="submit" disabled={submitting} className="w-full">

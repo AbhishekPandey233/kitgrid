@@ -1,0 +1,16 @@
+# Test profile for Burp Suite / manual pentest sessions (Phase 32).
+# NODE_ENV=test flips the backend's CAPTCHA middleware (src/services/captchaService.js) to
+# skip real hCaptcha verification — needed because Burp resends/replays captured requests
+# outside the browser, and real hCaptcha tokens are single-use and expire almost immediately,
+# which would otherwise break most replay-based testing. Everything else (cookies, CORS,
+# rate limiting) behaves the same as the normal dev profile.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.test.yml up -d --build
+#
+# Leaves docker-compose.yml itself untouched, so plain `docker compose up` for normal
+# development still runs with real CAPTCHA verification.
+services:
+  backend:
+    environment:
+      - NODE_ENV=test

@@ -21,7 +21,12 @@ export default function BookingDetailsDialog({ booking, onClose }) {
   const equipment = booking?.equipmentId;
 
   return (
-    <Modal open={!!booking} onClose={onClose} className="max-w-2xl p-6">
+    <Modal
+      open={!!booking}
+      onClose={onClose}
+      className="max-w-2xl p-6"
+      aria-label={`Booking details: ${equipment?.name || 'equipment'}`}
+    >
       {booking && (
         <>
           <div className="flex flex-col gap-6 sm:flex-row">
@@ -41,45 +46,45 @@ export default function BookingDetailsDialog({ booking, onClose }) {
               {equipment?.description && <p className="mt-2 text-sm text-slate-500">{equipment.description}</p>}
 
               <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                <dt className="text-slate-400">Window</dt>
+                <dt className="text-slate-500">Window</dt>
                 <dd className="text-slate-700">
                   {formatDateTime(booking.startDateTime)} – {formatDateTime(booking.endDateTime)}
                 </dd>
 
-                <dt className="text-slate-400">Quantity booked</dt>
+                <dt className="text-slate-500">Quantity booked</dt>
                 <dd className="text-slate-700">{booking.quantity}</dd>
 
                 {equipment?.quantityAvailable != null && (
                   <>
-                    <dt className="text-slate-400">Total stock</dt>
+                    <dt className="text-slate-500">Total stock</dt>
                     <dd className="text-slate-700">{equipment.quantityAvailable}</dd>
                   </>
                 )}
 
                 {booking.customerNote && (
                   <>
-                    <dt className="text-slate-400">Your note</dt>
+                    <dt className="text-slate-500">Your note</dt>
                     <dd className="text-slate-700">{booking.customerNote}</dd>
                   </>
                 )}
 
                 {booking.adminNote && (
                   <>
-                    <dt className="text-slate-400">Admin note</dt>
+                    <dt className="text-slate-500">Admin note</dt>
                     <dd className="text-slate-700">{booking.adminNote}</dd>
                   </>
                 )}
 
                 {booking.status === 'returned' && booking.conditionOnReturn && (
                   <>
-                    <dt className="text-slate-400">Condition on return</dt>
+                    <dt className="text-slate-500">Condition on return</dt>
                     <dd className="text-slate-700">{booking.conditionOnReturn}</dd>
                   </>
                 )}
 
                 {booking.decidedAt && (
                   <>
-                    <dt className="text-slate-400">Decided</dt>
+                    <dt className="text-slate-500">Decided</dt>
                     <dd className="text-slate-700">{formatDateTime(booking.decidedAt)}</dd>
                   </>
                 )}
