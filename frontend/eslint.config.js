@@ -19,14 +19,11 @@ export default [
       ...reactHooks.configs.recommended.rules,
       'react/react-in-jsx-scope': 'off',
       'react/prop-types': 'off',
-      // caughtErrors: 'none' — several intentional `catch (err) {}` swallows in this codebase
-      // (fall back to unauthenticated state, reject the original error not the retry error).
       'no-unused-vars': ['error', { argsIgnorePattern: '^_', caughtErrors: 'none' }],
     },
     settings: { react: { version: 'detect' } },
   },
   {
-    // Config files run in Node, not the browser — separate globals from app source.
     files: ['vite.config.js'],
     languageOptions: {
       globals: { ...globals.node },
