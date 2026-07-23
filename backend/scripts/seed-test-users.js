@@ -1,12 +1,3 @@
-// Seeds two known-credential accounts directly into MongoDB for manual pentest setup
-// (Phase 32). Writes straight through Mongoose, never through the HTTP API — so it
-// inherently bypasses CAPTCHA, rate limiting, and the registration endpoint entirely.
-// Re-run anytime: it upserts, so it's safe to run repeatedly against the same database.
-//
-// Usage (from backend/, with DB_URI pointing at the target Mongo):
-//   node scripts/seed-test-users.js
-// Or inside the docker-compose backend container:
-//   docker compose exec backend node scripts/seed-test-users.js
 
 const mongoose = require('mongoose');
 const env = require('../src/config/env');

@@ -4,10 +4,6 @@ const { logAudit } = require('../middleware/auditLogger');
 const { escapeRegExp } = require('../utils/escapeRegExp');
 const { getReservedQuantities } = require('../utils/availability');
 
-// Adds an `available` field (stock minus units reserved right now) to each equipment doc,
-// without touching the stored quantityAvailable — that field is total stock, and availability
-// is time-window dependent (see booking.controller.js's overlap check), so it can't just be
-// decremented on booking.
 async function withAvailability(items) {
   const reserved = await getReservedQuantities(items.map((item) => item._id));
   return items.map((item) => {
@@ -29,8 +25,6 @@ const createEquipmentSchema = z
       .number({ invalid_type_error: 'quantityAvailable must be a number' })
       .int('quantityAvailable must be a whole number')
       .min(0, 'quantityAvailable cannot be negative'),
-    // Accepts either a full URL or a root-relative /equipmentImages/... path (what
-    // uploadEquipmentImage now returns — see its comment for why relative, not absolute).
     photos: z
       .array(
         z
@@ -52,13 +46,6 @@ function formatZodError(error) {
   return error.issues.map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`);
 }
 
-// POST /api/equipment/upload-image — the multer middleware (imageUpload.single('image')) has
-// already run and validated the file by the time this handler is reached; it just has to
-// exist. Returns a root-relative path, not an absolute URL — this app is reachable at more
-// than one origin (localhost for normal dev, kitgrid for the Burp pentest profile), and an
-// absolute URL baked in at upload time goes stale the moment you view it from a different
-// origin than the one active when it was uploaded. <img src="/equipmentImages/...."> resolves
-// against whatever origin the page itself is loaded from, same as axiosClient.js's baseURL.
 async function uploadEquipmentImage(req, res) {
   if (!req.file) {
     return res.status(400).json({ error: 'image file is required' });

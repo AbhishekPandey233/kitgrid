@@ -12,9 +12,6 @@ const logger = require('./utils/logger');
 async function start() {
   await connectDB();
 
-  // env.tlsEnabled is only true when a real cert is mounted (see docker-compose.yml) — falls
-  // back to plain HTTP otherwise (CI, native `npm run dev` without mkcert set up, etc.)
-  // rather than requiring a cert everywhere.
   if (env.tlsEnabled) {
     const credentials = {
       key: fs.readFileSync(env.tlsKeyPath),

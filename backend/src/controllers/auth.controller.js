@@ -331,8 +331,6 @@ async function mfaChallenge(req, res, next) {
   }
 }
 
-// Shared by the initial forgot-password request and the resend button — same email/cooldown/
-// audit handling either way, since resending is just asking for a fresh OTP.
 async function sendPasswordResetOtp(req) {
   const { email } = req.body || {};
   if (!email) return;
@@ -856,7 +854,7 @@ async function logout(req, res, next) {
         const { sub: userId, sid: sessionId } = tokenService.verifyRefreshToken(token);
         await tokenService.revokeSession(userId, sessionId);
       } catch (err) {
-        // Token already invalid/expired — logout should succeed regardless.
+        void err;
       }
     }
     clearAuthCookies(res);

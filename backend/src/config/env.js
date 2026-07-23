@@ -1,11 +1,6 @@
 const fs = require('fs');
 require('dotenv').config();
 
-// True only when both paths are set AND the files actually exist — e.g. CI sets
-// TLS_CERT_PATH via docker-compose.yml's hardcoded environment: block but has no real cert
-// mounted (certs/ is gitignored, empty in a fresh checkout), so the server falls back to
-// plain HTTP there. Cookies' Secure flag (tokenService.js) must track this, not just whether
-// the env vars are set, or Secure cookies would be silently dropped over that HTTP fallback.
 const tlsEnabled = Boolean(
   process.env.TLS_CERT_PATH &&
     process.env.TLS_KEY_PATH &&
