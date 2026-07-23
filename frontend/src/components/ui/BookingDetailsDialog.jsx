@@ -2,6 +2,7 @@ import Modal from './Modal';
 import Badge from './Badge';
 import Button from './Button';
 import EquipmentThumbnail from './EquipmentThumbnail';
+import { resolveImageUrl } from '../../api/axiosClient';
 
 const STATUS_LABELS = {
   pending: 'Pending',
@@ -31,7 +32,7 @@ export default function BookingDetailsDialog({ booking, onClose }) {
         <>
           <div className="flex flex-col gap-6 sm:flex-row">
             <EquipmentThumbnail
-              src={equipment?.photos?.[0]}
+              src={resolveImageUrl(equipment?.photos?.[0])}
               alt={`Photo of ${equipment?.name || 'equipment'}`}
               className="h-56 w-full shrink-0 rounded-xl sm:h-56 sm:w-56"
               iconClassName="h-14 w-14"

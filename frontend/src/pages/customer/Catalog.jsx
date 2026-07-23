@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import axiosClient from '../../api/axiosClient';
+import axiosClient, { resolveImageUrl } from '../../api/axiosClient';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Alert from '../../components/ui/Alert';
@@ -109,7 +109,7 @@ export default function Catalog() {
                 animate={false}
                 className="flex h-full flex-col p-4 transition-shadow duration-200 hover:shadow-lg"
               >
-                <EquipmentThumbnail src={item.photos?.[0]} alt={`Photo of ${item.name}`} />
+                <EquipmentThumbnail src={resolveImageUrl(item.photos?.[0])} alt={`Photo of ${item.name}`} />
 
                 <div className="mt-4 flex flex-1 flex-col">
                   <h2 className="font-semibold text-slate-900">{item.name}</h2>

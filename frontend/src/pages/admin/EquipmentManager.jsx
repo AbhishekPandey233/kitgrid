@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import axiosClient from '../../api/axiosClient';
+import axiosClient, { resolveImageUrl } from '../../api/axiosClient';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Alert from '../../components/ui/Alert';
@@ -141,7 +141,7 @@ export default function EquipmentManager() {
               <label className="mb-1.5 block text-sm font-medium text-slate-700">Photo</label>
               <div className="flex items-center gap-4">
                 <EquipmentThumbnail
-                  src={form.photoUrl}
+                  src={resolveImageUrl(form.photoUrl)}
                   alt=""
                   className="h-40 w-40 shrink-0 rounded-lg"
                   iconClassName="h-12 w-12"
@@ -278,7 +278,7 @@ export default function EquipmentManager() {
                   <tr key={item._id} className="transition-colors hover:bg-slate-50">
                     <td className="px-4 py-3">
                       <EquipmentThumbnail
-                        src={item.photos?.[0]}
+                        src={resolveImageUrl(item.photos?.[0])}
                         alt={`Photo of ${item.name}`}
                         className="h-10 w-10 rounded-md"
                         iconClassName="h-4 w-4"

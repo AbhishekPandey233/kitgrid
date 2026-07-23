@@ -3,7 +3,6 @@ const Equipment = require('../models/Equipment');
 const { logAudit } = require('../middleware/auditLogger');
 const { escapeRegExp } = require('../utils/escapeRegExp');
 const { getReservedQuantities } = require('../utils/availability');
-const env = require('../config/env');
 
 // Adds an `available` field (stock minus units reserved right now) to each equipment doc,
 // without touching the stored quantityAvailable — that field is total stock, and availability
@@ -30,7 +29,19 @@ const createEquipmentSchema = z
       .number({ invalid_type_error: 'quantityAvailable must be a number' })
       .int('quantityAvailable must be a whole number')
       .min(0, 'quantityAvailable cannot be negative'),
-    photos: z.array(z.string().url('each photo must be a valid URL')).max(20).optional(),
+    // Accepts either a full URL or a root-relative /equipmentImages/... path (what
+    // uploadEquipmentImage now returns — see its comment for why relative, not absolute).
+    photos: z
+      .array(
+        z
+          .string()
+          .refine(
+            (v) => /^\/equipmentImages\/[^/]+$/.test(v) || /^https?:\/\/.+/.test(v),
+            'each photo must be a valid URL or an uploaded image path'
+          )
+      )
+      .max(20)
+      .optional(),
     status: z.enum(['active', 'retired']).optional(),
   })
   .strict();
@@ -43,13 +54,16 @@ function formatZodError(error) {
 
 // POST /api/equipment/upload-image — the multer middleware (imageUpload.single('image')) has
 // already run and validated the file by the time this handler is reached; it just has to
-// exist. Returns a full absolute URL (not a relative path) since createEquipmentSchema's
-// photos field requires one.
+// exist. Returns a root-relative path, not an absolute URL — this app is reachable at more
+// than one origin (localhost for normal dev, kitgrid for the Burp pentest profile), and an
+// absolute URL baked in at upload time goes stale the moment you view it from a different
+// origin than the one active when it was uploaded. <img src="/equipmentImages/...."> resolves
+// against whatever origin the page itself is loaded from, same as axiosClient.js's baseURL.
 async function uploadEquipmentImage(req, res) {
   if (!req.file) {
     return res.status(400).json({ error: 'image file is required' });
   }
-  return res.status(201).json({ url: `${env.backendOrigin}/equipmentImages/${req.file.filename}` });
+  return res.status(201).json({ url: `/equipmentImages/${req.file.filename}` });
 }
 
 async function listEquipment(req, res, next) {

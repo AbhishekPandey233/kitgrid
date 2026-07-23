@@ -15,8 +15,21 @@ function setCsrfToken(token) {
 // backend is always reachable on port 5000 relative to whatever host/protocol the frontend
 // itself was loaded from (localhost, kitgrid, an IP, http or https), so this keeps working
 // across every dev/pentest hostname without needing VITE_API_BASE_URL edited per setup.
+const API_ORIGIN = `${window.location.protocol}//${window.location.hostname}:5000`;
+
+// Equipment photo URLs come back from the API as root-relative paths (e.g.
+// "/equipmentImages/xxx.jpg") for the same reason as API_ORIGIN above. A plain <img
+// src="/equipmentImages/..."> would resolve against the *page's* origin (port 5173, the
+// frontend dev server, which has no such route) rather than the backend on port 5000 — so
+// every place that renders a photo needs to run it through this first.
+function resolveImageUrl(path) {
+  if (!path) return path;
+  if (/^https?:\/\//.test(path)) return path;
+  return `${API_ORIGIN}${path}`;
+}
+
 const axiosClient = axios.create({
-  baseURL: `${window.location.protocol}//${window.location.hostname}:5000/api`,
+  baseURL: `${API_ORIGIN}/api`,
   withCredentials: true,
 });
 
@@ -77,5 +90,5 @@ axiosClient.interceptors.response.use(
   }
 );
 
-export { setCsrfToken };
+export { setCsrfToken, resolveImageUrl };
 export default axiosClient;

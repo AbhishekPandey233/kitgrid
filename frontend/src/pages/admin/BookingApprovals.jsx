@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import axiosClient from '../../api/axiosClient';
+import axiosClient, { resolveImageUrl } from '../../api/axiosClient';
 import Button from '../../components/ui/Button';
 import Alert from '../../components/ui/Alert';
 import PageHeader from '../../components/ui/PageHeader';
@@ -134,7 +134,7 @@ export default function BookingApprovals() {
                             <td className="px-4 py-3 font-medium text-slate-800">
                               <div className="flex items-center gap-3">
                                 <EquipmentThumbnail
-                                  src={booking.equipmentId?.photos?.[0]}
+                                  src={resolveImageUrl(booking.equipmentId?.photos?.[0])}
                                   alt=""
                                   className="h-10 w-10 shrink-0 rounded-md"
                                   iconClassName="h-4 w-4"

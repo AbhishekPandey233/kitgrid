@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useLocation, Link } from 'react-router-dom';
-import axiosClient from '../../api/axiosClient';
+import axiosClient, { resolveImageUrl } from '../../api/axiosClient';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Alert from '../../components/ui/Alert';
@@ -108,7 +108,7 @@ export default function MyBookings() {
               <Card animate={false} className="flex flex-wrap items-center justify-between gap-4 p-5">
                 <div className="flex items-center gap-4">
                   <EquipmentThumbnail
-                    src={booking.equipmentId?.photos?.[0]}
+                    src={resolveImageUrl(booking.equipmentId?.photos?.[0])}
                     alt={`Photo of ${booking.equipmentId?.name || 'equipment'}`}
                     className="h-16 w-16 shrink-0 rounded-lg"
                     iconClassName="h-6 w-6"
