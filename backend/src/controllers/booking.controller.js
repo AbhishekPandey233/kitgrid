@@ -6,6 +6,7 @@ const Equipment = require('../models/Equipment');
 const HttpError = require('../utils/HttpError');
 const { pick } = require('../utils/pick');
 const { logAudit } = require('../middleware/auditLogger');
+const { sanitizeHtml } = require('../middleware/sanitize');
 const { BLOCKING_STATUSES } = require('../utils/availability');
 
 const dateSchema = z.coerce
@@ -77,21 +78,40 @@ async function listMyBookings(req, res, next) {
   }
 }
 
-async function getBooking(req, res) {
-  return res.status(200).json({ booking: req.resource });
+async function getBooking(req, res, next) {
+  try {
+    const booking = await Booking.findById(req.params.id).populate(
+      'equipmentId',
+      'name category photos description quantityAvailable'
+    );
+    if (!booking) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+    return res.status(200).json({ booking });
+  } catch (err) {
+    if (err.name === 'CastError') {
+      return res.status(404).json({ error: 'Not found' });
+    }
+    next(err);
+  }
 }
 
 async function updateBooking(req, res, next) {
   try {
-    const { customerNote } = req.body || {};
-    if (customerNote === undefined) {
+    const updates = pick(req.body || {}, ['startDateTime', 'endDateTime', 'customerNote']);
+
+    if (updates.startDateTime) updates.startDateTime = new Date(updates.startDateTime);
+    if (updates.endDateTime) updates.endDateTime = new Date(updates.endDateTime);
+    if (updates.customerNote) updates.customerNote = sanitizeHtml(updates.customerNote);
+
+    if (Object.keys(updates).length === 0) {
       return res.status(400).json({ error: 'Nothing to update' });
     }
 
-    req.resource.customerNote = customerNote;
-    await req.resource.save();
+    await Booking.collection.updateOne({ _id: req.resource._id }, { $set: updates });
+    const booking = await Booking.findById(req.resource._id);
 
-    return res.status(200).json({ booking: req.resource });
+    return res.status(200).json({ booking });
   } catch (err) {
     next(err);
   }
