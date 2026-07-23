@@ -8,13 +8,10 @@ function mockRes() {
     status(s) { this._status = s; return this; },
     end() { this._ended = true; return this; },
     json(b) { this._body = b; return this; },
+    set() { return this; },
     headersSent: false,
     sendFile(filePath, options, cb) {
       this._sentFile = filePath;
-      // Mirrors what Express's real res.sendFile(path, { root }) does internally — resolves
-      // the given path against root, rather than treating it as already-absolute. Getting
-      // this mock wrong (accepting an absolute path directly) is exactly what let the real
-      // sendFile/root mismatch bug slip past this test the first time around.
       const resolved = options?.root ? path.resolve(options.root, filePath) : filePath;
       try {
         fs.accessSync(resolved, fs.constants.R_OK);
@@ -80,7 +77,7 @@ describe('serveEquipmentImage (HTTP-level)', () => {
   const realFilePath = path.join(UPLOAD_DIR, realFilename);
 
   beforeAll(() => {
-    fs.writeFileSync(realFilePath, Buffer.from([0xff, 0xd8, 0xff])); // not a valid UUID name on purpose, see below
+    fs.writeFileSync(realFilePath, Buffer.from([0xff, 0xd8, 0xff]));
   });
 
   afterAll(() => {
@@ -88,8 +85,6 @@ describe('serveEquipmentImage (HTTP-level)', () => {
   });
 
   test('a real, correctly-formatted UUID filename is served successfully', () => {
-    // Rename to a pattern-matching name only for this one assertion, so the traversal tests
-    // below aren't relying on a file that happens to already exist.
     const uuidName = '550e8400-e29b-41d4-a716-446655440099.jpg';
     const uuidPath = path.join(UPLOAD_DIR, uuidName);
     fs.copyFileSync(realFilePath, uuidPath);
@@ -106,7 +101,7 @@ describe('serveEquipmentImage (HTTP-level)', () => {
 
   test('this is the concrete scenario: a crafted filename cannot escape to read backend/.env', () => {
     const envPath = path.resolve(UPLOAD_DIR, '../../.env');
-    expect(fs.existsSync(envPath)).toBe(true); // sanity check the target actually exists
+    expect(fs.existsSync(envPath)).toBe(true);
 
     const attempts = [
       '../../.env',

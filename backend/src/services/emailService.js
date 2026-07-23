@@ -4,9 +4,6 @@ const logger = require('../utils/logger');
 
 let transporterPromise = null;
 
-// Ethereal is a fake SMTP sandbox — it never delivers to a real inbox, mail can only be viewed
-// via the preview URL logged/returned below. Real delivery requires SMTP_HOST/SMTP_USER/
-// SMTP_PASS to be set (see backend/.env), in which case that provider is used instead.
 function getTransporter() {
   if (!transporterPromise) {
     transporterPromise = (async () => {

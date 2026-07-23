@@ -3,8 +3,10 @@ const env = require('../src/config/env');
 const User = require('../src/models/User');
 const Equipment = require('../src/models/Equipment');
 const Booking = require('../src/models/Booking');
+const { requireOwnership } = require('../src/middleware/ownership');
 const {
   createBooking,
+  getBooking,
   updateBooking,
   cancelBooking,
   approveBooking,
@@ -353,6 +355,58 @@ describe('Booking lifecycle (admin state machine + customer cancel)', () => {
       expect(res._status).toBe(409);
       const reloaded = await Booking.findById(booking._id);
       expect(reloaded.status).toBe('approved');
+    });
+  });
+
+  describe('GET /api/bookings/:id is owner-gated, same as PATCH/DELETE', () => {
+    test('customer B gets a 404 requesting customer A\'s booking via the ownBooking middleware', async () => {
+      const booking = await freshPendingBooking();
+      const ownBooking = requireOwnership(Booking, 'id', 'customerId');
+
+      const attacker = await User.create({ name: 'IDOR Attacker', email: `idor-b-${stamp}@example.com`, passwordHash: 'x' });
+      const req = { params: { id: booking._id.toString() }, user: { id: attacker._id.toString(), role: 'customer' } };
+      const res = mockRes();
+      const next = jest.fn();
+
+      await ownBooking(req, res, next);
+
+      expect(res._status).toBe(404);
+      expect(next).not.toHaveBeenCalled();
+      expect(req.resource).toBeUndefined();
+    });
+
+    test('the owner passes the same middleware and getBooking then returns the booking', async () => {
+      const booking = await freshPendingBooking();
+      const ownBooking = requireOwnership(Booking, 'id', 'customerId');
+
+      const req = { params: { id: booking._id.toString() }, user: { id: customer._id.toString(), role: 'customer' } };
+      const res = mockRes();
+      const next = jest.fn();
+
+      await ownBooking(req, res, next);
+      expect(next).toHaveBeenCalled();
+      expect(req.resource._id.toString()).toBe(booking._id.toString());
+
+      const getRes = mockRes();
+      await getBooking(req, getRes, jest.fn());
+      expect(getRes._status).toBe(200);
+      expect(getRes._body.booking._id.toString()).toBe(booking._id.toString());
+    });
+  });
+
+  describe('PATCH /api/bookings/:id sanitizes customerNote, same as creation', () => {
+    test('a <script> payload submitted via PATCH is stored as escaped text, not executable markup', async () => {
+      const booking = await freshPendingBooking();
+
+      const req = { resource: booking, body: { customerNote: '<script>alert(1)</script>hello' } };
+      const res = mockRes();
+      await updateBooking(req, res, jest.fn());
+
+      expect(res._status).toBe(200);
+      expect(res._body.booking.customerNote).not.toContain('<script>');
+
+      const reloaded = await Booking.findById(booking._id);
+      expect(reloaded.customerNote).not.toContain('<script>');
     });
   });
 

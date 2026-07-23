@@ -11,17 +11,8 @@ function setCsrfToken(token) {
   csrfToken = token;
 }
 
-// Derived from the page's own origin (protocol + hostname), not a static env var — the
-// backend is always reachable on port 5000 relative to whatever host/protocol the frontend
-// itself was loaded from (localhost, kitgrid, an IP, http or https), so this keeps working
-// across every dev/pentest hostname without needing VITE_API_BASE_URL edited per setup.
 const API_ORIGIN = `${window.location.protocol}//${window.location.hostname}:5000`;
 
-// Equipment photo URLs come back from the API as root-relative paths (e.g.
-// "/equipmentImages/xxx.jpg") for the same reason as API_ORIGIN above. A plain <img
-// src="/equipmentImages/..."> would resolve against the *page's* origin (port 5173, the
-// frontend dev server, which has no such route) rather than the backend on port 5000 — so
-// every place that renders a photo needs to run it through this first.
 function resolveImageUrl(path) {
   if (!path) return path;
   if (/^https?:\/\//.test(path)) return path;
@@ -53,12 +44,6 @@ axiosClient.interceptors.response.use(
     const isRefreshCall = config.url === REFRESH_PATH;
     const isCsrfTokenCall = config.url === CSRF_TOKEN_PATH;
 
-    // csrfToken lives only in this module's memory (never storage) — anything that resets
-    // the JS runtime without a full auth re-check (a dev-server hot reload, a stale tab
-    // resumed after the page's module state was otherwise cleared) can leave it null or
-    // pointing at an old session even though the user is still genuinely logged in. Rather
-    // than surface that as a dead end, fetch a fresh token once and retry — the same
-    // self-healing shape as the 401/refresh case below.
     if (response.status === 403 && response.data?.error === CSRF_ERROR_MESSAGE && !isCsrfTokenCall && !config._csrfRetried) {
       config._csrfRetried = true;
       try {

@@ -10,7 +10,6 @@ const REFRESH_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60;
 const REFRESH_TOKEN_TTL_MS = REFRESH_TOKEN_TTL_SECONDS * 1000;
 const MFA_PENDING_TOKEN_TTL = '5m';
 
-
 function sessionKey(userId, sessionId) {
   return `session:${userId}:${sessionId}`;
 }
@@ -58,8 +57,6 @@ function hashOtp(otp) {
   return crypto.createHash('sha256').update(otp).digest('hex');
 }
 
-// True once OTP_RESEND_COOLDOWN_SECONDS has passed since the last OTP was issued for this
-// email — a server-side backstop against resend spam, independent of any client-side timer.
 async function canIssuePasswordResetOtp(email) {
   return !(await redisClient.get(otpCooldownKey(email)));
 }
@@ -71,8 +68,6 @@ async function issuePasswordResetOtp(email) {
   return otp;
 }
 
-// Constant-time compare against the stored hash; wrong guesses count toward OTP_MAX_ATTEMPTS so
-// the 6-digit code can't be brute-forced by hammering this endpoint.
 async function verifyPasswordResetOtp(email, submittedOtp) {
   const key = otpKey(email);
   const raw = await redisClient.get(key);
@@ -294,9 +289,6 @@ function verifyCsrfToken(sessionId, token) {
 const baseCookieOptions = {
   httpOnly: true,
   sameSite: 'strict',
-  // Secure in real production, and also whenever this process is itself terminating TLS
-  // locally (see server.js/env.tlsEnabled) — cookies should be Secure any time the
-  // connection actually is, no more and no less.
   secure: env.nodeEnv === 'production' || env.tlsEnabled,
 };
 

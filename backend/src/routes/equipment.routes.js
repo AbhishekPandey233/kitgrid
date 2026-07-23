@@ -13,9 +13,6 @@ const {
 
 const router = express.Router();
 
-// multer is invoked manually (not as a plain middleware in the chain) so a rejected file
-// (wrong type, too large) comes back as a clean 400 JSON response instead of falling through
-// to the generic 500 error handler, which doesn't know multer's error shape.
 function runImageUpload(req, res, next) {
   imageUpload.single('image')(req, res, (err) => {
     if (err) {

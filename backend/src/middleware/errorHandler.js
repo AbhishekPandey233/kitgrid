@@ -1,10 +1,7 @@
 const logger = require('../utils/logger');
 const env = require('../config/env');
 
-// Express only treats this as error-handling middleware if it has arity 4;
-// `next` must stay even though it's never called.
-// eslint-disable-next-line no-unused-vars
-function errorHandler(err, req, res, next) {
+function errorHandler(err, req, res, _next) {
   const status = err.statusCode || 500;
 
   logger.error(err.message, {
