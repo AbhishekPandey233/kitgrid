@@ -85,8 +85,6 @@ export default function BookingForm() {
     } catch (err) {
       setErrors(err.response?.data?.details || []);
       setError(err.response?.data?.error || 'Booking failed');
-      // A 409 means another user booked overlapping units between page load and submit —
-      // refresh so the displayed availability reflects reality instead of stale data.
       if (err.response?.status === 409) {
         fetchEquipment().then(setEquipment).catch(() => {});
       }

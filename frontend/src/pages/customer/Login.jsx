@@ -9,7 +9,6 @@ import Field, { inputClass } from '../../components/ui/Field';
 import PasswordField from '../../components/ui/PasswordField';
 
 const SITE_KEY = import.meta.env.VITE_CAPTCHA_SITE_KEY;
-// Same-origin derivation as axiosClient.js — see its comment for why.
 const GOOGLE_LOGIN_URL = `${window.location.protocol}//${window.location.hostname}:5000/api/auth/google`;
 
 const OAUTH_ERROR_MESSAGES = {

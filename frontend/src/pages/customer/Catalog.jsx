@@ -41,8 +41,6 @@ export default function Catalog() {
     }
 
     const debounceTimer = setTimeout(() => fetchEquipment({ showSpinner: true }), DEBOUNCE_MS);
-    // Availability changes whenever any user books/cancels/returns equipment, so the list is
-    // polled in the background to stay current without the user needing to refresh manually.
     const pollTimer = setInterval(() => fetchEquipment({ showSpinner: false }), POLL_MS);
 
     return () => {
